@@ -2,7 +2,7 @@
 
 # JustGRPO
 
-**The Flexibility Trap: Rethinking the Value of Arbitrary Order in Diffusion Language Models**
+**The Flexibility Trap: Why Arbitrary Order Limits Reasoning Potential in Diffusion Language Models**
 
 <p align="center">
     <a href="https://nzl-thu.github.io/">Zanlin Ni<sup>1</sup></a> &emsp;
@@ -10,24 +10,25 @@
     <a href="https://yueyang130.github.io/">Yang Yue<sup>1</sup></a> &emsp;
     <a href="https://scholar.google.com/citations?user=e-FRHr4AAAAJ&hl=zh-TW">Tianyu Yu<sup>2</sup></a> &emsp;
     <a href="https://brawny-college-5b2.notion.site/Weilin-Zhao-11d20b7deb8280388213d5f5ed072992">Weilin Zhao<sup>2</sup></a> &emsp;
+    <a href="https://dblp.uni-trier.de/pid/402/2123.html">Yeguo Hua<sup>3</sup></a> &emsp;
 </p>
 <p align="center">
-    <a href="https://dblp.uni-trier.de/pid/402/2123.html">Yeguo Hua<sup>2</sup></a> &emsp;
-    Tianyi Chen<sup>2</sup> &emsp;
-    Jun Song<sup>3</sup> &emsp;
-    Cheng Yu<sup>3</sup> &emsp;
-    Bo Zheng<sup>3</sup> &emsp;
+    Tianyi Chen<sup>3</sup> &emsp;
+    Jun Song<sup>4</sup> &emsp;
+    Cheng Yu<sup>4</sup> &emsp;
+    Bo Zheng<sup>4</sup> &emsp;
     <a href="https://gaohuang-net.github.io/">Gao Huang<sup>1✉</sup></a>
 </p>
 
 <p align="center">
     <sup>1</sup>LeapLab, Tsinghua University &emsp;
-    <sup>2</sup>Tsinghua University &emsp;
-    <sup>3</sup>Alibaba Group
+    <sup>2</sup>NLPLab, Tsinghua University &emsp;
+    <sup>3</sup>Tsinghua University &emsp;
+    <sup>4</sup>Alibaba Group
 </p>
 
 [![Project](https://img.shields.io/badge/🌐%20Project-Page-green)](https://nzl-thu.github.io/the-flexibility-trap/)
-[![Paper](https://img.shields.io/badge/📄%20Paper-PDF-b31b1b.svg)](https://nzl-thu.github.io/the-flexibility-trap/static/paper.pdf)
+[![arXiv](https://img.shields.io/badge/arXiv-2601.15165-b31b1b.svg)](https://arxiv.org/abs/2601.15165)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Model](https://img.shields.io/badge/🤗%20Model-JustGRPO-yellow)](https://huggingface.co/nzl-thu/LLaDA-Instruct-JustGRPO)
 
@@ -40,6 +41,7 @@
 
 ## 📢 News
 
+- **[2026.01]** 📄 Paper available on [arXiv](https://arxiv.org/abs/2601.15165)!
 - **[2026.01]** 🎉 Training code, evaluation scripts, and [model checkpoint](https://huggingface.co/nzl-thu/LLaDA-Instruct-JustGRPO) on GSM8K released!
 
 ## 📋 TODO
@@ -134,11 +136,11 @@ torchrun --standalone --nproc-per-node=8 eval.py \
 If you find this work useful, please cite:
 
 ```bibtex
-@misc{ni2026flexibility,
-  author    = {Ni, Zanlin and Wang, Shenzhi and Yue, Yang and Yu, Tianyu and Zhao, Weilin and Hua, Yeguo and Chen, Tianyi and Song, Jun and Yu, Cheng and Zheng, Bo and Huang, Gao},
-  title     = {The Flexibility Trap: Rethinking the Value of Arbitrary Order in Diffusion Language Models},
-  year      = {2026},
-  howpublished = {\url{https://nzl-thu.github.io/the-flexibility-trap}},
+@article{ni2026flexibility,
+  title={The Flexibility Trap: Why Arbitrary Order Limits Reasoning Potential in Diffusion Language Models},
+  author={Ni, Zanlin and Wang, Shenzhi and Yue, Yang and Yu, Tianyu and Zhao, Weilin and Hua, Yeguo and Chen, Tianyi and Song, Jun and Yu, Cheng and Zheng, Bo and Huang, Gao},
+  journal={arXiv preprint arXiv:2601.15165},
+  year={2026}
 }
 ```
 
