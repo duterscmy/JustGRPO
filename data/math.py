@@ -53,6 +53,52 @@ def reward_gsm8k(batch, responses, num_generations, device):
     return rewards
 
 
+def reward_gsm8k_ttrl(batch, responses, num_generations, device):
+    """
+    Compute reward for GSM8K responses using TTRL's majority voting method.
+    
+    Args:
+        batch: Batch containing problems (but NOT using ground truth answers for reward)
+        responses: Model generated responses
+        num_generations: Number of generations per problem
+        device: Torch device
+    
+    Returns:
+        Tensor of rewards (+1 for matching majority vote, -1 for not matching)
+    """
+    from collections import Counter
+    
+    # 将 responses 按问题分组
+    num_problems = len(responses) // num_generations
+    rewards = torch.zeros(len(responses), device=device)
+    
+    for problem_idx in range(num_problems):
+        # 获取当前问题的所有生成结果
+        start_idx = problem_idx * num_generations
+        end_idx = start_idx + num_generations
+        problem_responses = responses[start_idx:end_idx]
+        
+        # 提取所有答案
+        extracted_answers = []
+        for resp in problem_responses:
+            ans = extract_answer(resp)
+            extracted_answers.append(ans)
+        
+        # 多数投票：找出出现频率最高的答案作为伪标签
+        if extracted_answers:
+            counter = Counter(extracted_answers)
+            majority_answer = counter.most_common(1)[0][0]
+            
+            # 根据是否匹配多数投票结果分配奖励
+            for i, ans in enumerate(extracted_answers):
+                if ans == majority_answer:
+                    rewards[start_idx + i] = 1.0  # 匹配多数投票结果
+                # else:
+                #     rewards[start_idx + i] = -1.0  # 不匹配多数投票结果
+    
+    return rewards
+
+
 def load_gsm8k_dataset_and_reward(
     local_path: str = "gsm8k",
     batch_size: int = 1,
@@ -92,4 +138,4 @@ def load_gsm8k_dataset_and_reward(
         pin_memory=True,
     )
     
-    return dataloader, reward_gsm8k
+    return dataloader, reward_gsm8k_ttrl
