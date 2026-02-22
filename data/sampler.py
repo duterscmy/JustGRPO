@@ -14,6 +14,7 @@ class InfiniteSampler(torch.utils.data.Sampler):
         assert num_replicas > 0
         assert 0 <= rank < num_replicas
         assert 0 <= window_size <= 1
+        print(len(dataset))
         super().__init__(dataset)
         self.dataset = dataset
         self.rank = rank
