@@ -80,18 +80,18 @@ def train(config: TrainConfig):
         torch_dtype=torch.bfloat16,
     )
 
-    model.config.tie_word_embeddings = False
-    # 这一步非常重要：如果模型已经加载了，手动解除内存引用
-    if hasattr(model, "get_output_embeddings") and hasattr(model, "get_input_embeddings"):
-        import copy
-        # 强制克隆一份权重，让输出层拥有自己独立的内存地址
-        model.set_output_embeddings(copy.deepcopy(model.get_output_embeddings()))
+    # model.config.tie_word_embeddings = False
+    # # 这一步非常重要：如果模型已经加载了，手动解除内存引用
+    # if hasattr(model, "get_output_embeddings") and hasattr(model, "get_input_embeddings"):
+    #     import copy
+    #     # 强制克隆一份权重，让输出层拥有自己独立的内存地址
+    #     model.set_output_embeddings(copy.deepcopy(model.get_output_embeddings()))
 
-    # 3. 补丁（针对新版 Transformers 检查）
-    if not hasattr(model, "all_tied_weights_keys"):
-        model.all_tied_weights_keys = []
+    # # 3. 补丁（针对新版 Transformers 检查）
+    # if not hasattr(model, "all_tied_weights_keys"):
+    #     model.all_tied_weights_keys = []
 
-    # 4. 显存优化
+    # # 4. 显存优化
     model.gradient_checkpointing_enable()
 
     model.eval().to(device)
