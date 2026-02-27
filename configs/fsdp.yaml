@@ -1,20 +1,11 @@
 compute_environment: LOCAL_MACHINE
 debug: false
 fsdp_config:
-    # 1. 核心修复：只包装最外层的 Block。
-    # 不要包装 Linear 和 Embedding，否则会导致参数被切得太碎，无法重组回 [126464, 4096]
     auto_wrap_policy: TRANSFORMER_BASED_WRAP
+    # 只要这一个，LLaDA 的 block 叫 LLaDALlamaBlock
     transformer_layer_cls_to_wrap: "LLaDALlamaBlock" 
-    
-    fsdp: 'full_shard'
-    limit_all_gathers: true
-    
-    # 2. 关键：这两个必须同时为 true
     use_orig_params: true
-    fsdp_use_orig_params: true 
-    
-    sync_module_states: true
-    fsdp_forward_prefetch: false
+    fsdp_use_orig_params: true
 distributed_type: FSDP
 downcast_bf16: 'no'
 enable_cpu_affinity: false

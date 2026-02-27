@@ -76,8 +76,8 @@ def train(config: TrainConfig):
     )
 
     
-    model.eval().to(device)
-    
+    # model.eval().to(device)
+    model.eval()
     # Activation checkpointing
     if hasattr(model, 'model') and hasattr(model.model, 'set_activation_checkpointing'):
         model.model.set_activation_checkpointing('whole_layer')
