@@ -75,6 +75,24 @@ def train(config: TrainConfig):
         torch_dtype=torch.bfloat16,
     )
 
+    # 核心修复：强制关闭权重共享
+    model.config.tie_word_embeddings = False
+
+    # 针对 LLaDA/Llama 结构的特殊处理：
+    if hasattr(model, "get_input_embeddings") and hasattr(model, "get_output_embeddings"):
+        input_emb = model.get_input_embeddings()
+        output_emb = model.get_output_embeddings()
+        if input_emb is output_emb: # 如果它们指向同一个对象
+            import copy
+            # 克隆一份权重，确保它们是独立的内存地址
+            new_output_emb = copy.deepcopy(output_emb)
+            model.set_output_embeddings(new_output_emb)
+
+    # 补丁：防止 Transformers 内部检查报错
+    if not hasattr(model, "all_tied_weights_keys"):
+        model.all_tied_weights_keys = []
+
+    
     model.eval().to(device)
     
     # Activation checkpointing
@@ -144,57 +162,56 @@ def train(config: TrainConfig):
         
         for accum_idx in range(config.grad_accumulation):
             print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Sampling...")
-            with torch.no_grad():
-                with dist.ddp_sync(model, sync=(accum_idx == config.grad_accumulation - 1)):
-                    model.eval()
+            with dist.ddp_sync(model, sync=(accum_idx == config.grad_accumulation - 1)):
+                model.eval()
+                
+                with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
+                    # --- Rollout ---
+                    batch = next(dataloader_iter)
+                    inputs_chunks = []
                     
-                    with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
-                        # --- Rollout ---
-                        batch = next(dataloader_iter)
-                        inputs_chunks = []
-                        
-                        for _ in range(config.repeat_times):
-                            inputs = sample(
-                                model=accelerator.unwrap_model(model),
-                                batch=batch,
-                                tokenizer=tokenizer,
-                                device=device,
-                                reward_fn=reward_fn,
-                                num_generations=config.num_generations,
-                                steps=config.gen_steps,
-                                gen_length=config.gen_length,
-                            )
-                            inputs_chunks.append(inputs)
+                    for _ in range(config.repeat_times):
+                        inputs = sample(
+                            model=accelerator.unwrap_model(model),
+                            batch=batch,
+                            tokenizer=tokenizer,
+                            device=device,
+                            reward_fn=reward_fn,
+                            num_generations=config.num_generations,
+                            steps=config.gen_steps,
+                            gen_length=config.gen_length,
+                        )
+                        inputs_chunks.append(inputs)
 
-                        # --- Compute Advantages ---
-                        rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
-                        advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times)
-                        
-                        valid_samples = (advantages != 0).sum()
-                        split_advantages = advantages.split(config.num_generations, dim=0)
-                        for chunk, adv in zip(inputs_chunks, split_advantages):
-                            chunk["advantages"] = adv
-                        
-                        accelerator.wait_for_everyone()
-
-                        # --- Compute Loss ---
-                        print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Computing loss...")
-                        model.train()
-                        for inputs in inputs_chunks:
-                            logprob_loss(
-                                model=model,
-                                inputs=inputs,
-                                valid_samples=valid_samples,
-                                gain=1.0,
-                                accelerator=accelerator,
-                                gen_length=config.gen_length,
-                            )
-                            all_rewards.append(inputs['rewards'].detach())
+                    # --- Compute Advantages ---
+                    rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
+                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times)
+                    
+                    valid_samples = (advantages != 0).sum()
+                    split_advantages = advantages.split(config.num_generations, dim=0)
+                    for chunk, adv in zip(inputs_chunks, split_advantages):
+                        chunk["advantages"] = adv
                     
                     accelerator.wait_for_everyone()
-                    
-                    for key in list(inputs.keys()):
-                        del inputs[key]
+
+                    # --- Compute Loss ---
+                    print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Computing loss...")
+                    model.train()
+                    for inputs in inputs_chunks:
+                        logprob_loss(
+                            model=model,
+                            inputs=inputs,
+                            valid_samples=valid_samples,
+                            gain=1.0,
+                            accelerator=accelerator,
+                            gen_length=config.gen_length,
+                        )
+                        all_rewards.append(inputs['rewards'].detach())
+                
+                accelerator.wait_for_everyone()
+                
+                for key in list(inputs.keys()):
+                    del inputs[key]
 
         # --- Grad Clip & Optimizer Step ---
         for param in model.parameters():
