@@ -75,9 +75,8 @@ def train(config: TrainConfig):
         torch_dtype=torch.bfloat16,
     )
 
-    
-    # model.eval().to(device)
-    model.eval()
+    model.eval().to(device)
+
     # Activation checkpointing
     if hasattr(model, 'model') and hasattr(model.model, 'set_activation_checkpointing'):
         model.model.set_activation_checkpointing('whole_layer')
