@@ -91,8 +91,8 @@ def train(config: TrainConfig):
     # if not hasattr(model, "all_tied_weights_keys"):
     #     model.all_tied_weights_keys = []
 
-    # # 4. 显存优化
-    model.gradient_checkpointing_enable()
+    # # # 4. 显存优化
+    # model.gradient_checkpointing_enable()
 
     model.eval().to(device)
     
