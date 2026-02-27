@@ -11,7 +11,6 @@
 #SBATCH --mem-per-cpu 8g             # 根据你的任务调整，debug模式20G应该够
 
 ### GPU requirements ###
-#SBATCH --partition=workq          # 改成a100分区
 #SBATCH --gpus=8                # 使用1块GPU
 
 ### Job log files ###
