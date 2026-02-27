@@ -1,10 +1,4 @@
 import os
-# 必须在 import deepspeed 之前设置
-# os.environ["DS_BUILD_OPS"] = "0"
-# os.environ["DS_BUILD_SPARSE_ATTN"] = "0"
-# os.environ["DS_BUILD_AIO"] = "0"
-# # 告诉 transformers 也不要尝试编译任何 cuda extension
-# os.environ["TRANSFORMERS_NO_ADAPTER_COMPILATION"] = "True"
 import re
 import argparse
 import numpy as np
@@ -81,20 +75,6 @@ def train(config: TrainConfig):
         torch_dtype=torch.bfloat16,
     )
 
-    # model.config.tie_word_embeddings = False
-    # # 这一步非常重要：如果模型已经加载了，手动解除内存引用
-    # if hasattr(model, "get_output_embeddings") and hasattr(model, "get_input_embeddings"):
-    #     import copy
-    #     # 强制克隆一份权重，让输出层拥有自己独立的内存地址
-    #     model.set_output_embeddings(copy.deepcopy(model.get_output_embeddings()))
-
-    # # 3. 补丁（针对新版 Transformers 检查）
-    # if not hasattr(model, "all_tied_weights_keys"):
-    #     model.all_tied_weights_keys = []
-
-    # # # 4. 显存优化
-    # model.gradient_checkpointing_enable()
-
     model.eval().to(device)
     
     # Activation checkpointing
@@ -164,56 +144,57 @@ def train(config: TrainConfig):
         
         for accum_idx in range(config.grad_accumulation):
             print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Sampling...")
-            with dist.ddp_sync(model, sync=(accum_idx == config.grad_accumulation - 1)):
-                model.eval()
-                
-                with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
-                    # --- Rollout ---
-                    batch = next(dataloader_iter)
-                    inputs_chunks = []
+            with torch.no_grad():
+                with dist.ddp_sync(model, sync=(accum_idx == config.grad_accumulation - 1)):
+                    model.eval()
                     
-                    for _ in range(config.repeat_times):
-                        inputs = sample(
-                            model=accelerator.unwrap_model(model),
-                            batch=batch,
-                            tokenizer=tokenizer,
-                            device=device,
-                            reward_fn=reward_fn,
-                            num_generations=config.num_generations,
-                            steps=config.gen_steps,
-                            gen_length=config.gen_length,
-                        )
-                        inputs_chunks.append(inputs)
+                    with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
+                        # --- Rollout ---
+                        batch = next(dataloader_iter)
+                        inputs_chunks = []
+                        
+                        for _ in range(config.repeat_times):
+                            inputs = sample(
+                                model=accelerator.unwrap_model(model),
+                                batch=batch,
+                                tokenizer=tokenizer,
+                                device=device,
+                                reward_fn=reward_fn,
+                                num_generations=config.num_generations,
+                                steps=config.gen_steps,
+                                gen_length=config.gen_length,
+                            )
+                            inputs_chunks.append(inputs)
 
-                    # --- Compute Advantages ---
-                    rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
-                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times)
-                    
-                    valid_samples = (advantages != 0).sum()
-                    split_advantages = advantages.split(config.num_generations, dim=0)
-                    for chunk, adv in zip(inputs_chunks, split_advantages):
-                        chunk["advantages"] = adv
+                        # --- Compute Advantages ---
+                        rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
+                        advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times)
+                        
+                        valid_samples = (advantages != 0).sum()
+                        split_advantages = advantages.split(config.num_generations, dim=0)
+                        for chunk, adv in zip(inputs_chunks, split_advantages):
+                            chunk["advantages"] = adv
+                        
+                        accelerator.wait_for_everyone()
+
+                        # --- Compute Loss ---
+                        print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Computing loss...")
+                        model.train()
+                        for inputs in inputs_chunks:
+                            logprob_loss(
+                                model=model,
+                                inputs=inputs,
+                                valid_samples=valid_samples,
+                                gain=1.0,
+                                accelerator=accelerator,
+                                gen_length=config.gen_length,
+                            )
+                            all_rewards.append(inputs['rewards'].detach())
                     
                     accelerator.wait_for_everyone()
-
-                    # --- Compute Loss ---
-                    print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Computing loss...")
-                    model.train()
-                    for inputs in inputs_chunks:
-                        logprob_loss(
-                            model=model,
-                            inputs=inputs,
-                            valid_samples=valid_samples,
-                            gain=1.0,
-                            accelerator=accelerator,
-                            gen_length=config.gen_length,
-                        )
-                        all_rewards.append(inputs['rewards'].detach())
-                
-                accelerator.wait_for_everyone()
-                
-                for key in list(inputs.keys()):
-                    del inputs[key]
+                    
+                    for key in list(inputs.keys()):
+                        del inputs[key]
 
         # --- Grad Clip & Optimizer Step ---
         for param in model.parameters():
