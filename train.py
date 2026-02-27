@@ -75,25 +75,9 @@ def train(config: TrainConfig):
         torch_dtype=torch.bfloat16,
     )
 
-    # # 核心修复：强制关闭权重共享
-    # model.config.tie_word_embeddings = False
-
-    # # 针对 LLaDA/Llama 结构的特殊处理：
-    # if hasattr(model, "get_input_embeddings") and hasattr(model, "get_output_embeddings"):
-    #     input_emb = model.get_input_embeddings()
-    #     output_emb = model.get_output_embeddings()
-    #     if input_emb is output_emb: # 如果它们指向同一个对象
-    #         import copy
-    #         # 克隆一份权重，确保它们是独立的内存地址
-    #         new_output_emb = copy.deepcopy(output_emb)
-    #         model.set_output_embeddings(new_output_emb)
-
-    # # 补丁：防止 Transformers 内部检查报错
-    # if not hasattr(model, "all_tied_weights_keys"):
-    #     model.all_tied_weights_keys = []
-
     
-    model.eval().to(device)
+    # model.eval().to(device)
+    model.eval()
     
     # Activation checkpointing
     if hasattr(model, 'model') and hasattr(model.model, 'set_activation_checkpointing'):
@@ -172,7 +156,8 @@ def train(config: TrainConfig):
                     
                     for _ in range(config.repeat_times):
                         inputs = sample(
-                            model=accelerator.unwrap_model(model),
+                            # model=accelerator.unwrap_model(model),
+                            model=model,
                             batch=batch,
                             tokenizer=tokenizer,
                             device=device,
