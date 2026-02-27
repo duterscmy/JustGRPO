@@ -76,8 +76,7 @@ def train(config: TrainConfig):
     )
 
     
-    # model.eval().to(device)
-    model.eval()
+    model.eval().to(device)
     
     # Activation checkpointing
     if hasattr(model, 'model') and hasattr(model.model, 'set_activation_checkpointing'):
@@ -156,8 +155,7 @@ def train(config: TrainConfig):
                     
                     for _ in range(config.repeat_times):
                         inputs = sample(
-                            # model=accelerator.unwrap_model(model),
-                            model=model,
+                            model=accelerator.unwrap_model(model),
                             batch=batch,
                             tokenizer=tokenizer,
                             device=device,
