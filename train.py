@@ -73,6 +73,10 @@ def train(config: TrainConfig):
         trust_remote_code=True,
         torch_dtype=torch.bfloat16,
     )
+
+    if not hasattr(model, "all_tied_weights_keys"):
+        # 兼容新版 transformers 的权重绑定检查
+        model.all_tied_weights_keys = getattr(model, "_tied_weights_keys", [])
     model.eval().to(device)
     
     # Activation checkpointing
