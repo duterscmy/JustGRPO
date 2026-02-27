@@ -10,7 +10,8 @@
 
 
 ### 激活conda环境
-source ~/miniconda3/bin/activate ttrl  # 你的环境名
+source ~/.bashrc # 你的环境名
+conda activate ttrl
 
 ### 运行debug脚本
 bash debug.sh
