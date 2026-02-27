@@ -12,6 +12,7 @@
 
 ### GPU requirements ###
 #SBATCH --gpus=8                # 使用1块GPU
+#SBATCH --time=24:00:00
 
 ### Job log files ###
 #SBATCH -o slurm.%j.%N.out        # 输出日志 (%j=jobID, %N=node)
