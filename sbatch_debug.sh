@@ -4,7 +4,6 @@
 #SBATCH --ntasks-per-node=8
 #SBATCH --cpus-per-task=4          # 增加到4，提高数据加载效率
 #SBATCH --mem=128G                  # 改用总内存更可靠
-#SBATCH --partition=a100            # 指定GPU分区
 #SBATCH --gres=gpu:8                # 请求8块GPU
 #SBATCH --time=24:00:00
 #SBATCH -o slurm.%j.%N.out
