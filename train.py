@@ -1,4 +1,10 @@
 import os
+# 必须在 import deepspeed 之前设置
+os.environ["DS_BUILD_OPS"] = "0"
+os.environ["DS_BUILD_SPARSE_ATTN"] = "0"
+os.environ["DS_BUILD_AIO"] = "0"
+# 告诉 transformers 也不要尝试编译任何 cuda extension
+os.environ["TRANSFORMERS_NO_ADAPTER_COMPILATION"] = "True"
 import re
 import argparse
 import numpy as np
@@ -74,9 +80,20 @@ def train(config: TrainConfig):
         torch_dtype=torch.bfloat16,
     )
 
+    model.config.tie_word_embeddings = False
+    # 这一步非常重要：如果模型已经加载了，手动解除内存引用
+    if hasattr(model, "get_output_embeddings") and hasattr(model, "get_input_embeddings"):
+        import copy
+        # 强制克隆一份权重，让输出层拥有自己独立的内存地址
+        model.set_output_embeddings(copy.deepcopy(model.get_output_embeddings()))
+
+    # 3. 补丁（针对新版 Transformers 检查）
     if not hasattr(model, "all_tied_weights_keys"):
-        # 兼容新版 transformers 的权重绑定检查
-        model.all_tied_weights_keys = getattr(model, "_tied_weights_keys", [])
+        model.all_tied_weights_keys = []
+
+    # 4. 显存优化
+    model.gradient_checkpointing_enable()
+
     model.eval().to(device)
     
     # Activation checkpointing
