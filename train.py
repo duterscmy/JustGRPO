@@ -1,10 +1,10 @@
 import os
 # 必须在 import deepspeed 之前设置
-os.environ["DS_BUILD_OPS"] = "0"
-os.environ["DS_BUILD_SPARSE_ATTN"] = "0"
-os.environ["DS_BUILD_AIO"] = "0"
-# 告诉 transformers 也不要尝试编译任何 cuda extension
-os.environ["TRANSFORMERS_NO_ADAPTER_COMPILATION"] = "True"
+# os.environ["DS_BUILD_OPS"] = "0"
+# os.environ["DS_BUILD_SPARSE_ATTN"] = "0"
+# os.environ["DS_BUILD_AIO"] = "0"
+# # 告诉 transformers 也不要尝试编译任何 cuda extension
+# os.environ["TRANSFORMERS_NO_ADAPTER_COMPILATION"] = "True"
 import re
 import argparse
 import numpy as np
