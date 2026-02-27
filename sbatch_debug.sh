@@ -1,10 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name="ttrl"
-#SBATCH --nodes=4
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=4          # 增加到4，提高数据加载效率
-#SBATCH --mem=128G                  # 改用总内存更可靠
-#SBATCH --gres=gpu:4                # 请求8块GPU
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=4
+#SBATCH --gres=gpu:8                # 请求8块GPU
 #SBATCH --time=24:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
