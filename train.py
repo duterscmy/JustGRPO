@@ -15,7 +15,7 @@ class TrainConfig:
     """Training hyperparameters for GRPO."""
     
     # --- Model ---
-    model_path: str = "/home/u6ai/cmy9797.u6ai/models/LLaDA-8B-Instruct"
+    model_path: str = "/home/u6er/cmy9797.u6er/models/LLaDA-8B-Instruct"
     
     # --- Training ---
     batch_size_per_device: int = 1
