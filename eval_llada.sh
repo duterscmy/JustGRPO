@@ -24,7 +24,7 @@ if [[ "$model_path" != *"LLaDA"* ]]; then
     # 检查源路径是否存在
     if [ -d "$source_model_path" ]; then
         # 复制所有.py, .json, .txt文件到model_path
-        cp "$source_model_path"/*.py "$source_model_path"/*.json  "$model_path"/ 2>/dev/null || true
+        cp "$source_model_path"/*.py "$model_path"/ 2>/dev/null || true
         echo "Copied .py, .json, .txt files from $source_model_path to $model_path"
     else
         echo "Warning: Source path $source_model_path does not exist!"
