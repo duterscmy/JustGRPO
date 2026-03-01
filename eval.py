@@ -17,6 +17,7 @@ def evaluate(args):
     dist.init_process_group(backend="nccl")
     rank, world_size = dist.get_rank(), dist.get_world_size()
     device = f'cuda:{rank % torch.cuda.device_count()}'
+    print(rank, world_size, device)
     torch.cuda.set_device(device)
 
     # --- Load model & tokenizer ---
