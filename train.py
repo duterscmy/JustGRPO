@@ -16,7 +16,8 @@ class TrainConfig:
     """Training hyperparameters for GRPO."""
     
     # --- Model ---
-    model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct"
+    # model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct"
+    model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/ckpt-000008"
     
     # --- Training ---
     batch_size_per_device: int = 1
@@ -36,7 +37,7 @@ class TrainConfig:
     # --- Misc ---
     output_dir: str = "./checkpoints"
     log_every: int = 1
-    save_every: int = 8
+    save_every: int = 15
     resume_ckpt: Optional[str] = None
 
 
