@@ -105,6 +105,16 @@ def reward_gsm8k_ttrl(batch, responses, num_generations, device):
             counter = Counter(extracted_answers)
             majority_answer = counter.most_common(1)[0][0]
             print("==========MAJORITY: {}===========".format(majority_answer))
+
+            # 计算多样性统计
+            distinct_answer_num = len(counter)
+            all_answer_num = len(extracted_answers)
+            distinct_answer_ratio = distinct_answer_num / all_answer_num
+            best_answer_ratio = counter[majority_answer] / all_answer_num
+            
+            # 输出多样性统计（特定格式）
+            print(f"diversity| distinct_answer_num: {distinct_answer_num} | all_answer_num: {all_answer_num} | distinct_answer_ratio: {distinct_answer_ratio:.2f} | best_answer_ratio: {best_answer_ratio:.2f}", flush=True)
+
             # 根据是否匹配多数投票结果分配奖励
             for i, ans in enumerate(extracted_answers):
                 if ans == majority_answer:

@@ -36,7 +36,7 @@ class TrainConfig:
     # --- Misc ---
     output_dir: str = "./checkpoints_math500_num_generation{}".format(num_generations)
     log_every: int = 1
-    save_every: int = 7
+    save_every: int = 5
     resume_ckpt: Optional[str] = None
 
 
