@@ -87,9 +87,9 @@ def train(config: TrainConfig):
     
     # --- Load dataset ---
     print("Loading dataset...")
-    from data.math import load_math500_dataset_and_reward
+    from data.math import load_aime2024_dataset_and_reward
     
-    dataloader, reward_fn = load_math500_dataset_and_reward(
+    dataloader, reward_fn = load_aime2024_dataset_and_reward(
         local_path="Maxwell-Jia/AIME_2024",
         batch_size=config.batch_size_per_device,
         split="train",
