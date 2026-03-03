@@ -138,4 +138,4 @@ def load_gsm8k_dataset_and_reward(
         pin_memory=True,
     )
     
-    return dataloader, reward_gsm8k_ttrl
+    return dataloader, reward_gsm8k
