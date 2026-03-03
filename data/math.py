@@ -81,6 +81,8 @@ def reward_gsm8k_ttrl(batch, responses, num_generations, device):
         # 提取所有答案
         extracted_answers = []
         for resp in problem_responses:
+            print(resp)
+            print(ans)
             ans = extract_answer(resp)
             extracted_answers.append(ans)
         
