@@ -19,6 +19,12 @@ def collate_fn_gsm8k(batch):
     answers = [item['answer'] for item in batch]
     return {"problems": problems, "answers": answers}
 
+def collate_fn_math500(batch):
+    """Collate function for GSM8K dataset."""
+    problems = [item['problem'] for item in batch]
+    answers = [item['solution'] for item in batch]
+    return {"problems": problems, "answers": answers}
+
 
 def extract_answer_gsm8k(answer: str):
     """Extract the final answer from GSM8K format (after ####)."""
@@ -132,6 +138,48 @@ def load_gsm8k_dataset_and_reward(
     dataloader = DataLoader(
         ds,
         collate_fn=collate_fn_gsm8k,
+        batch_size=batch_size,
+        sampler=sampler,
+        num_workers=num_workers,
+        pin_memory=True,
+    )
+    
+    return dataloader, reward_gsm8k_ttrl
+
+
+def load_math500_dataset_and_reward(
+    local_path: str = "HuggingFaceH4/MATH-500",
+    batch_size: int = 1,
+    split: str = 'test',
+    num_workers: int = 4,
+    seed: int = 112,
+):
+    """
+    Load GSM8K dataset and return dataloader with reward function.
+    
+    Args:
+        local_path: HuggingFace dataset path
+        batch_size: Batch size per GPU
+        split: Dataset split to use
+        num_workers: Number of dataloader workers
+        seed: Random seed for shuffling
+    
+    Returns:
+        Tuple of (dataloader, reward_function)
+    """
+    ds = load_dataset(local_path, "main", split=split)
+    ds = ds.with_format('torch')
+    ds = ds.shuffle(seed=seed)
+    
+    sampler = InfiniteSampler(
+        ds, 
+        rank=get_rank(), 
+        num_replicas=get_world_size(),
+    )
+    
+    dataloader = DataLoader(
+        ds,
+        collate_fn=collate_fn_math500,
         batch_size=batch_size,
         sampler=sampler,
         num_workers=num_workers,
