@@ -82,10 +82,10 @@ def reward_gsm8k_ttrl(batch, responses, num_generations, device):
         extracted_answers = []
         for resp in problem_responses:
             print(resp)
-            print(ans)
             ans = extract_answer(resp)
+            print(ans)
             extracted_answers.append(ans)
-        
+        print("=================")
         # 多数投票：找出出现频率最高的答案作为伪标签
         if extracted_answers:
             counter = Counter(extracted_answers)
