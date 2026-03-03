@@ -85,16 +85,20 @@ def reward_gsm8k_ttrl(batch, responses, num_generations, device):
         problem_responses = responses[start_idx:end_idx]
         
         # 提取所有答案
+        print("============ROLLOUT==========")
         extracted_answers = []
         for resp in problem_responses:
             ans = extract_answer(resp)
             extracted_answers.append(ans)
+            print(resp)
+            print(ans)
+            print("==================")
         
         # 多数投票：找出出现频率最高的答案作为伪标签
         if extracted_answers:
             counter = Counter(extracted_answers)
             majority_answer = counter.most_common(1)[0][0]
-            
+            print("==========MAJORITY: {}===========".format(majority_answer))
             # 根据是否匹配多数投票结果分配奖励
             for i, ans in enumerate(extracted_answers):
                 if ans == majority_answer:
