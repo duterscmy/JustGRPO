@@ -167,7 +167,7 @@ def load_math500_dataset_and_reward(
     Returns:
         Tuple of (dataloader, reward_function)
     """
-    ds = load_dataset(local_path, "main", split=split)
+    ds = load_dataset(local_path, "default", split=split)
     ds = ds.with_format('torch')
     ds = ds.shuffle(seed=seed)
     
