@@ -17,7 +17,7 @@ class TrainConfig:
     
     # --- Model ---
     # model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct"
-    model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/ckpt-000014"
+    model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/training-state-000028"
     
     # --- Training ---
     batch_size_per_device: int = 1
