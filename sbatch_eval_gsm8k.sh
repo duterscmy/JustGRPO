@@ -34,11 +34,24 @@ else
 fi
 
 
-log_name=$(echo $model_path | awk -F'/' '{print $(NF-1)"_"$NF}' | sed 's/\//_/g')
+# 先规范化路径（去除末尾的斜杠）
+clean_path=$(echo $model_path | sed 's:/*$::')
+
+# 提取最后两层非空目录/文件并拼接
+log_name=$(echo $clean_path | awk -F'/' '{
+    nf = NF
+    if (nf >= 2) {
+        print $(nf-1)"_"$nf
+    } else if (nf == 1) {
+        print $1
+    } else {
+        print "unknown"
+    }
+}')
 
 # 运行评估
 torchrun --standalone --nproc-per-node=4 eval.py \
-  --ckpt_path $model_path \
+  --ckpt_dir $model_path \
   --steps 256 \
   --gen_length 256 \
   --block_length 32 &> eval_results/${log_name}.log
