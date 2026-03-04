@@ -147,7 +147,7 @@ def train(config: TrainConfig):
             with dist.ddp_sync(model, sync=(accum_idx == config.grad_accumulation - 1)):
                 model.eval()
                 
-                with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
+                with torch.no_grad(),torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
                     # --- Rollout ---
                     batch = next(dataloader_iter)
                     inputs_chunks = []
@@ -165,7 +165,7 @@ def train(config: TrainConfig):
                             gen_length=config.gen_length,
                         )
                         inputs_chunks.append(inputs)
-
+                        torch.cuda.empty_cache()
                     # --- Compute Advantages ---
                     rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
                     advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times)
