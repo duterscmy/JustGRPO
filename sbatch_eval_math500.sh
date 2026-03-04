@@ -37,7 +37,7 @@ accelerate launch --num_processes=1 /lus/lfs1aip2/projects/public/u6er/mingyu/ll
     --num_fewshot 0 \
     --log_samples \
      --output_path ${target_dir}/${base_name} \
-    --model_args model_path=$model_path,gen_length=256,steps=256,block_length=32 &> "$log_path"
+    --model_args model_path=$model_path,gen_length=256,steps=256,block_length=32 #&> "$log_path"
 
 
 echo "Evaluation completed!"
