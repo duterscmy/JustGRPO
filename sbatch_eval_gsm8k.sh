@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name="ttrl"
+#SBATCH --job-name="eval_gsm8k"
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:4                # 请求2块GPU
@@ -34,26 +34,29 @@ else
 fi
 
 
-# 先规范化路径（去除末尾的斜杠）
+# 1. 规范化路径（去除末尾斜杠）
 clean_path=$(echo $model_path | sed 's:/*$::')
 
-# 提取最后两层非空目录/文件并拼接
-log_name=$(echo $clean_path | awk -F'/' '{
-    nf = NF
-    if (nf >= 2) {
-        print $(nf-1)"_"$nf
-    } else if (nf == 1) {
-        print $1
-    } else {
-        print "unknown"
-    }
-}')
+# 2. 提取目录名（倒数第二层）和文件名（最底层）
+# 假设 model_path 为 /path/to/checkpoints_gsm8k_num_generation8/ckpt-000007
+parent_dir=$(basename $(dirname "$clean_path"))
+base_name=$(basename "$clean_path")
 
-# 运行评估
+# 3. 创建目标子目录
+target_dir="eval_results/${parent_dir}"
+mkdir -p "$target_dir"
+
+# 4. 拼接最终的日志路径
+log_path="${target_dir}/${base_name}.log"
+
+echo "Logging to: $log_path"
+
+# 5. 运行评估
 torchrun --standalone --nproc-per-node=4 eval.py \
-  --ckpt_dir $model_path \
+  --ckpt_dir "$model_path" \
   --steps 256 \
   --gen_length 256 \
-  --block_length 32 &> eval_results/${log_name}.log
+  --block_length 32 &> "$log_path"
+
 
 echo "Evaluation completed!"
