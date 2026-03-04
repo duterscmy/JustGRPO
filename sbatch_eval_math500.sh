@@ -31,10 +31,10 @@ log_path="${target_dir}/${base_name}.log"
 
 echo "Logging to: $log_path"
 
-accelerate launch --num_processes=1 /lus/lfs1aip2/projects/public/u6er/mingyu/llada/eval_llada.py \
+accelerate launch --num_processes=4 /lus/lfs1aip2/projects/public/u6er/mingyu/llada/eval_llada.py \
     --tasks minerva_math500 \
     --model llada_dist \
-    --model_args model_path=$model_path,gen_length=256,steps=256,block_length=32 #&> "$log_path"
+    --model_args model_path=$model_path,gen_length=256,steps=256,block_length=32 &> "$log_path"
 
 
 echo "Evaluation completed!"
