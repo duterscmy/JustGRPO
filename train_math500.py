@@ -91,6 +91,7 @@ def train(config: TrainConfig):
     
     dataloader, reward_fn = load_math500_dataset_and_reward(
         local_path="HuggingFaceH4/MATH-500",
+        split='test',
         batch_size=config.batch_size_per_device,
         num_workers=4,
     )

@@ -90,6 +90,7 @@ def train(config: TrainConfig):
     
     dataloader, reward_fn = load_math500_dataset_and_reward(
         local_path="ankner/math-500",
+        split='train',
         batch_size=config.batch_size_per_device,
         num_workers=4,
     )
@@ -153,7 +154,8 @@ def train(config: TrainConfig):
                     
                     for _ in range(config.repeat_times):
                         inputs = sample(
-                            model=accelerator.unwrap_model(model),
+                            # model=accelerator.unwrap_model(model),
+                            model=model,
                             batch=batch,
                             tokenizer=tokenizer,
                             device=device,
@@ -180,7 +182,7 @@ def train(config: TrainConfig):
                     model.train()
                     for inputs in inputs_chunks:
                         logprob_loss(
-                            model=accelerator.unwrap_model(model),
+                            model=model,
                             inputs=inputs,
                             valid_samples=valid_samples,
                             gain=1.0,
