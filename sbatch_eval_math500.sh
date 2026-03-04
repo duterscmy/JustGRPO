@@ -42,7 +42,7 @@ echo "Logging to: $log_path"
 # Use model_args to adjust the sampling arguments for evaluation.
 accelerate launch --num_processes 1 \
     /lus/lfs1aip2/projects/public/u6er/mingyu/dllm/dllm/pipelines/llada/eval.py \
-    --tasks "minerva_math" \
+    --tasks "minerva_math500" \
     --model "llada" \
     --apply_chat_template \
     --num_fewshot 0 \
