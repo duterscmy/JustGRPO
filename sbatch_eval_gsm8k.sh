@@ -33,11 +33,14 @@ else
     echo "model_path contains 'LLaDA', no need to copy config files."
 fi
 
+
+log_name=$(echo $model_path | awk -F'/' '{print $(NF-1)"_"$NF}' | sed 's/\//_/g')
+
 # 运行评估
 torchrun --standalone --nproc-per-node=4 eval.py \
   --ckpt_path $model_path \
   --steps 256 \
   --gen_length 256 \
-  --block_length 32 &> eval_results/$(basename $model_path).log
+  --block_length 32 &> eval_results/${log_name}.log
 
 echo "Evaluation completed!"
