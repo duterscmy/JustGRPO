@@ -47,9 +47,10 @@ def sample_with_repeat(model, batch, tokenizer, device, reward_fn=None, num_gene
 def logprob_loss(model, inputs, valid_samples, eps=0.2, gain=1.0, temperature=1., accelerator=None,
                  gen_length=256, mask_id=126336):
     advantages, generated_ids, prompt_len = inputs['advantages'], inputs['generated_ids'], inputs['prompt_len']
+    print(advantages.size(), generated_ids.size())
     batch_size, device = advantages.shape[0], generated_ids.device
     prompt_ids, completion_ids = generated_ids[:, :prompt_len], generated_ids[:, prompt_len:]
-
+    print(prompt_ids.size(), completion_ids.size())
     valid_samples = accelerator.gather(valid_samples).float().mean().item()
     scale = gain / gen_length / (valid_samples + 1e-5)
 

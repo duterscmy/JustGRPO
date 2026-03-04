@@ -132,7 +132,7 @@ def train(config: TrainConfig):
     
     # --- Training loop ---
     print(f"Starting training for {config.total_steps} steps...")
-    print(f"Group size: {config.num_generations * config.repeat_times}")
+    print(f"Group size: {config.num_generations * config.repeat_times * config.sample_repeat_times}")
     print(f"Grad accumulation: {config.grad_accumulation}")
     print(f"Effective batch: {config.batch_size_per_device * dist.get_world_size() * config.grad_accumulation}")
     print(f"Learning rate: {config.learning_rate}")
@@ -168,7 +168,7 @@ def train(config: TrainConfig):
 
                     # --- Compute Advantages ---
                     rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
-                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times)
+                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times * config.sample_repeat_times)
                     
                     valid_samples = (advantages != 0).sum()
                     split_advantages = advantages.split(config.num_generations, dim=0)
