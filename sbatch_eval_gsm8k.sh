@@ -53,7 +53,7 @@ echo "Logging to: $log_path"
 
 # 5. 运行评估
 torchrun --standalone --nproc-per-node=4 eval.py \
-  --ckpt_dir "$model_path" \
+  --ckpt_path "$model_path" \
   --steps 256 \
   --gen_length 256 \
   --block_length 32 &> "$log_path"
