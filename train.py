@@ -154,7 +154,7 @@ def train(config: TrainConfig):
                     
                     for _ in range(config.repeat_times):
                         inputs = sample(
-                            model=accelerator.unwrap_model(model),
+                            model=model,
                             batch=batch,
                             tokenizer=tokenizer,
                             device=device,
