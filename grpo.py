@@ -30,7 +30,7 @@ def sample_with_repeat(model, batch, tokenizer, device, reward_fn=None, num_gene
 
     # Rollout with AR order (block_length=1)
     generate_ids_list = []
-    for _ in repeat_time:
+    for _ in range(repeat_time):
         generated_ids = generate(model=model, prompt=prompt_ids.repeat(num_generations, 1),
                                 steps=steps, gen_length=gen_length, temperature=temperature, block_length=1)
         generate_ids_list.append(generated_ids)
