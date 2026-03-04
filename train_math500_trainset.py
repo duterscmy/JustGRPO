@@ -147,7 +147,7 @@ def train(config: TrainConfig):
             with dist.ddp_sync(model, sync=(accum_idx == config.grad_accumulation - 1)):
                 model.eval()
                 
-                with torch.no_grad(),torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
+                with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
                     # --- Rollout ---
                     batch = next(dataloader_iter)
                     inputs_chunks = []
