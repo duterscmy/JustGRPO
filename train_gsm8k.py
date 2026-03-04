@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import utils.distributed as dist
-from grpo import sample, logprob_loss, compute_group_advantages
+from grpo import sample, sample_with_repeat, logprob_loss, compute_group_advantages
 
 
 
@@ -16,8 +16,7 @@ class TrainConfig:
     """Training hyperparameters for GRPO."""
     
     # --- Model ---
-    # model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct"
-    model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/ckpt-000014"
+    model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct"
     
     # --- Training ---
     batch_size_per_device: int = 1
@@ -29,8 +28,8 @@ class TrainConfig:
     max_grad_norm: float = 1.0
     seed: int = 1234
     num_generations: int = 8
-    # repeat_times: int = 2
     repeat_times: int = 1
+    sample_repeat_times: int = 2
     gen_steps: int = 256
     gen_length: int = 256
 
@@ -134,7 +133,7 @@ def train(config: TrainConfig):
     
     # --- Training loop ---
     print(f"Starting training for {config.total_steps} steps...")
-    print(f"Group size: {config.num_generations * config.repeat_times}")
+    print(f"Group size: {config.num_generations * config.repeat_times * config.sample_repeat_times}")
     print(f"Grad accumulation: {config.grad_accumulation}")
     print(f"Effective batch: {config.batch_size_per_device * dist.get_world_size() * config.grad_accumulation}")
     print(f"Learning rate: {config.learning_rate}")
@@ -155,7 +154,7 @@ def train(config: TrainConfig):
                     inputs_chunks = []
                     
                     for _ in range(config.repeat_times):
-                        inputs = sample(
+                        inputs = sample_with_repeat(
                             model=accelerator.unwrap_model(model),
                             batch=batch,
                             tokenizer=tokenizer,
@@ -164,15 +163,18 @@ def train(config: TrainConfig):
                             num_generations=config.num_generations,
                             steps=config.gen_steps,
                             gen_length=config.gen_length,
+                            repeat_time=config.sample_repeat_times
                         )
                         inputs_chunks.append(inputs)
+                        torch.cuda.empty_cache()
 
                     # --- Compute Advantages ---
                     rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
-                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times)
-                    
+                    print("reward size: {}".format(rewards.size()))
+                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times * config.sample_repeat_times)
+                    print("advantages size: {}".format(advantages.size()))
                     valid_samples = (advantages != 0).sum()
-                    split_advantages = advantages.split(config.num_generations, dim=0)
+                    split_advantages = advantages.split(config.num_generations*config.sample_repeat_times, dim=0)
                     for chunk, adv in zip(inputs_chunks, split_advantages):
                         chunk["advantages"] = adv
                     

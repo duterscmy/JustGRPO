@@ -166,6 +166,7 @@ def train(config: TrainConfig):
                             repeat_time=config.sample_repeat_times
                         )
                         inputs_chunks.append(inputs)
+                        torch.cuda.empty_cache()
 
                     # --- Compute Advantages ---
                     rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
