@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name="ttrl"
+#SBATCH --job-name="justgrpo"
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:4                # 请求8块GPU
-#SBATCH --time=24:00:00
+#SBATCH --time=22:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
 
