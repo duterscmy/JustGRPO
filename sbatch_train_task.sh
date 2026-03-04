@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name="ttrl"
+#SBATCH --job-name="train_ttrl"
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:4                # 请求8块GPU
