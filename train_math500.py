@@ -168,10 +168,11 @@ def train(config: TrainConfig):
 
                     # --- Compute Advantages ---
                     rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
+                    print("reward size: {}".format(rewards.size()))
                     advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times * config.sample_repeat_times)
-                    
+                    print("advantages size: {}".format(advantages.size()))
                     valid_samples = (advantages != 0).sum()
-                    split_advantages = advantages.split(config.num_generations, dim=0)
+                    split_advantages = advantages.split(config.num_generations*config.sample_repeat_times, dim=0)
                     for chunk, adv in zip(inputs_chunks, split_advantages):
                         chunk["advantages"] = adv
                     
