@@ -59,8 +59,8 @@ def logprob_loss(model, inputs, valid_samples, eps=0.2, gain=1.0, temperature=1.
         x = torch.cat([prompt_ids, completion_ids[:, :t],
                        torch.full((batch_size, gen_length - t), mask_id, device=device, dtype=generated_ids.dtype)], dim=1)
         print("x.size(): {}".format(x.size()))
-        # with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
-        with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+        with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
+        # with torch.cuda.amp.autocast(dtype=torch.bfloat16):
             logits = model(x).logits / temperature
 
         # Compute log probability of next token
