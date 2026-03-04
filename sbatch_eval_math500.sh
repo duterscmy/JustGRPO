@@ -12,7 +12,7 @@ source ~/.bashrc # 你的环境名
 conda activate llada
 
 model_path=$1
-cp /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/config.json /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/*py $model_path
+cp /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/config.json /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/*py /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/*token* $model_path
 mkdir -p eval_results
 
 # 1. 规范化路径（去除末尾斜杠）
