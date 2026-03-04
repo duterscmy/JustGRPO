@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import utils.distributed as dist
-from grpo import sample, logprob_loss, compute_group_advantages
+from grpo import sample, sample_with_repeat,logprob_loss, compute_group_advantages
 
 
 
@@ -28,7 +28,8 @@ class TrainConfig:
     max_grad_norm: float = 1.0
     seed: int = 1234
     num_generations: int = 4
-    repeat_times: int = 2
+    repeat_times: int = 1
+    sample_repeat_times: int = 2
     gen_steps: int = 256
     gen_length: int = 256
 
@@ -152,7 +153,7 @@ def train(config: TrainConfig):
                     inputs_chunks = []
                     
                     for _ in range(config.repeat_times):
-                        inputs = sample(
+                        inputs = sample_with_repeat(
                             model=accelerator.unwrap_model(model),
                             batch=batch,
                             tokenizer=tokenizer,
@@ -161,6 +162,7 @@ def train(config: TrainConfig):
                             num_generations=config.num_generations,
                             steps=config.gen_steps,
                             gen_length=config.gen_length,
+                            repeat_time=config.sample_repeat_times
                         )
                         inputs_chunks.append(inputs)
 
