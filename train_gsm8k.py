@@ -182,7 +182,7 @@ def train(config: TrainConfig):
                     model.train()
                     for inputs in inputs_chunks:
                         logprob_loss(
-                            model=model,
+                            model=accelerator.unwrap_model(model),
                             inputs=inputs,
                             valid_samples=valid_samples,
                             gain=1.0,
