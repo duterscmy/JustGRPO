@@ -36,7 +36,7 @@ class TrainConfig:
     # --- Misc ---
     output_dir: str = "./checkpoints_gsm8k_justgrpo"
     log_every: int = 1
-    save_every: int = 5
+    save_every: int = 7
     resume_ckpt: Optional[str] = None
 
 
