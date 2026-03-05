@@ -209,7 +209,11 @@ def train(config: TrainConfig):
         grad_norm = accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
         if hasattr(grad_norm, "item"):
             grad_norm = grad_norm.item()
-        
+
+        all_rewards_tensor = torch.cat(all_rewards, dim=0)
+        gathered_rewards = accelerator.gather(all_rewards_tensor)
+        mean_reward = gathered_rewards.mean().item()
+        print(f"grad_norm: {grad_norm}, reward: {mean_reward}")
         optimizer.step()
         
         # --- Logging ---
