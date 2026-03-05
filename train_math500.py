@@ -103,6 +103,7 @@ def train(config: TrainConfig):
         betas=(0.9, 0.999),
         eps=1e-8,
         weight_decay=config.weight_decay,
+        foreach=False,  # 加这一行
     )
     
     # --- Accelerator setup ---
