@@ -112,7 +112,7 @@ def train(config: TrainConfig):
     # --- Resume ---
     start_step = 0
     if config.resume_ckpt is not None:
-        local_resume_path = config.resume_ckpt.split('/')[-1]
+        local_resume_path = config.resume_ckpt #.split('/')[-1]
         if os.path.exists(local_resume_path):
             print(f"Resuming from {local_resume_path}")
             accelerator.load_state(local_resume_path)
