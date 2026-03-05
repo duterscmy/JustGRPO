@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import utils.distributed as dist
-from grpo import sample, logprob_loss, compute_group_advantages
+from grpo import sample, sample_with_repeat, logprob_loss, compute_group_advantages
 
 
 
@@ -27,15 +27,16 @@ class TrainConfig:
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
     seed: int = 1234
-    num_generations: int = 4
-    repeat_times: int = 2
+    num_generations: int = 8
+    repeat_times: int = 1
+    sample_repeat_times: int = 1
     gen_steps: int = 256
     gen_length: int = 256
 
     # --- Misc ---
-    output_dir: str = "./checkpoints_math500_num_generation{}".format(num_generations)
+    output_dir: str = "./checkpoints"
     log_every: int = 1
-    save_every: int = 5
+    save_every: int = 7
     resume_ckpt: Optional[str] = None
 
 
@@ -84,12 +85,12 @@ def train(config: TrainConfig):
     tokenizer = AutoTokenizer.from_pretrained(config.model_path)
     tokenizer.pad_token_id = 126336  # LLaDA mask token
     
-    # --- Load dataset ---
-    print("Loading dataset...")
-    from data.math import load_math500_dataset_and_reward
+    # --- Load dataset (GSM8K) ---
+    print("Loading GSM8K dataset...")
+    from data.math import load_gsm8k_dataset_and_reward
     
-    dataloader, reward_fn = load_math500_dataset_and_reward(
-        local_path="ankner/math-500",
+    dataloader, reward_fn = load_gsm8k_dataset_and_reward(
+        local_path="gsm8k",
         split='train',
         batch_size=config.batch_size_per_device,
         num_workers=4,
@@ -134,7 +135,7 @@ def train(config: TrainConfig):
     
     # --- Training loop ---
     print(f"Starting training for {config.total_steps} steps...")
-    print(f"Group size: {config.num_generations * config.repeat_times}")
+    print(f"Group size: {config.num_generations * config.repeat_times * config.sample_repeat_times}")
     print(f"Grad accumulation: {config.grad_accumulation}")
     print(f"Effective batch: {config.batch_size_per_device * dist.get_world_size() * config.grad_accumulation}")
     print(f"Learning rate: {config.learning_rate}")
@@ -155,8 +156,7 @@ def train(config: TrainConfig):
                     inputs_chunks = []
                     
                     for _ in range(config.repeat_times):
-                        inputs = sample(
-                            # model=accelerator.unwrap_model(model),
+                        inputs = sample_with_repeat(
                             model=model,
                             batch=batch,
                             tokenizer=tokenizer,
@@ -165,15 +165,18 @@ def train(config: TrainConfig):
                             num_generations=config.num_generations,
                             steps=config.gen_steps,
                             gen_length=config.gen_length,
+                            repeat_time=config.sample_repeat_times
                         )
                         inputs_chunks.append(inputs)
                         torch.cuda.empty_cache()
+
                     # --- Compute Advantages ---
                     rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
-                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times)
-                    
+                    print("reward size: {}".format(rewards.size()))
+                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times * config.sample_repeat_times)
+                    print("advantages size: {}".format(advantages.size()))
                     valid_samples = (advantages != 0).sum()
-                    split_advantages = advantages.split(config.num_generations, dim=0)
+                    split_advantages = advantages.split(config.num_generations*config.sample_repeat_times, dim=0)
                     for chunk, adv in zip(inputs_chunks, split_advantages):
                         chunk["advantages"] = adv
                     

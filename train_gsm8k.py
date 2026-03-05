@@ -112,6 +112,7 @@ def train(config: TrainConfig):
     # --- Resume ---
     start_step = 0
     if config.resume_ckpt is not None:
+        print(config.resume_ckpt)
         local_resume_path = config.resume_ckpt #.split('/')[-1]
         if os.path.exists(local_resume_path):
             print(f"Resuming from {local_resume_path}")
@@ -119,6 +120,7 @@ def train(config: TrainConfig):
         match = re.search(r'(\d+)$', config.resume_ckpt.rstrip('/'))
         if match:
             start_step = int(match.group(1))
+            print("start_step is {}".format(start_step))
     
     dataloader_iter = iter(dataloader)
     
