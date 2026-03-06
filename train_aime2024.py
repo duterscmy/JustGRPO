@@ -16,13 +16,13 @@ class TrainConfig:
     """Training hyperparameters for GRPO."""
     
     # --- Model ---
-    model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct"
+    model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_aime2024_num_generation8/ckpt-000001"
     
     # --- Training ---
     batch_size_per_device: int = 1
     grad_accumulation: int = 8
     # total_steps: int = 125
-    total_steps: int = 1
+    total_steps: int = 3
     learning_rate: float = 5e-6
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
