@@ -205,8 +205,9 @@ def train(config: TrainConfig):
         # --- Grad Clip & Optimizer Step ---
         for param in model.parameters():
             if param.grad is not None:
+                param.grad = param.grad.float()  # add for unknown issue
                 torch.nan_to_num(param.grad, nan=0, posinf=0, neginf=0, out=param.grad)
-        
+
         grad_norm = accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
         if hasattr(grad_norm, "item"):
             grad_norm = grad_norm.item()
@@ -216,10 +217,6 @@ def train(config: TrainConfig):
         mean_reward = gathered_rewards.mean().item()
         print(f"grad_norm: {grad_norm}, reward: {mean_reward}")
 
-        # for param in model.parameters():
-        #     if param.grad is not None:
-        #         param.grad = param.grad.float()
-        #         torch.nan_to_num(param.grad, nan=0, posinf=0, neginf=0, out=param.grad)
         
         optimizer.step()
         
