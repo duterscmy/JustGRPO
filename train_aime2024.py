@@ -22,7 +22,7 @@ class TrainConfig:
     batch_size_per_device: int = 1
     grad_accumulation: int = 8
     # total_steps: int = 125
-    total_steps: int = 50
+    total_steps: int = 1
     learning_rate: float = 5e-6
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
@@ -157,7 +157,7 @@ def train(config: TrainConfig):
                     
                     for _ in range(config.repeat_times):
                         inputs = sample_with_repeat(
-                            model=accelerator.unwrap_model(model),
+                            model=model,
                             batch=batch,
                             tokenizer=tokenizer,
                             device=device,
@@ -187,7 +187,7 @@ def train(config: TrainConfig):
                     model.train()
                     for inputs in inputs_chunks:
                         logprob_loss(
-                            model=accelerator.unwrap_model(model),
+                            model=model,
                             inputs=inputs,
                             valid_samples=valid_samples,
                             gain=1.0,
