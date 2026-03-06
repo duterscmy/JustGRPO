@@ -27,9 +27,9 @@ class TrainConfig:
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
     seed: int = 1234
-    num_generations: int = 4
+    num_generations: int = 2
     repeat_times: int = 1
-    sample_repeat_times: int = 2
+    sample_repeat_times: int = 4
     gen_steps: int = 256
     gen_length: int = 256
 
