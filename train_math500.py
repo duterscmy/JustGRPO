@@ -29,7 +29,7 @@ class TrainConfig:
     seed: int = 1234
     num_generations: int = 4
     repeat_times: int = 1
-    sample_repeat_times: int = 2
+    sample_repeat_times: int = 4
     gen_steps: int = 256
     gen_length: int = 256
 
@@ -215,6 +215,12 @@ def train(config: TrainConfig):
         gathered_rewards = accelerator.gather(all_rewards_tensor)
         mean_reward = gathered_rewards.mean().item()
         print(f"grad_norm: {grad_norm}, reward: {mean_reward}")
+
+        # for param in model.parameters():
+        #     if param.grad is not None:
+        #         param.grad = param.grad.float()
+        #         torch.nan_to_num(param.grad, nan=0, posinf=0, neginf=0, out=param.grad)
+        
         optimizer.step()
         
         # --- Logging ---
