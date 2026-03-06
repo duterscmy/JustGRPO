@@ -103,7 +103,6 @@ def train(config: TrainConfig):
         betas=(0.9, 0.999),
         eps=1e-8,
         weight_decay=config.weight_decay,
-        foreach=False,  # 加这一行
     )
     
     # --- Accelerator setup ---
@@ -158,7 +157,7 @@ def train(config: TrainConfig):
                     
                     for _ in range(config.repeat_times):
                         inputs = sample_with_repeat(
-                            model=accelerator.unwrap_model(model),
+                            model=model,
                             batch=batch,
                             tokenizer=tokenizer,
                             device=device,
@@ -188,7 +187,7 @@ def train(config: TrainConfig):
                     model.train()
                     for inputs in inputs_chunks:
                         logprob_loss(
-                            model=accelerator.unwrap_model(model),
+                            model=model,
                             inputs=inputs,
                             valid_samples=valid_samples,
                             gain=1.0,
