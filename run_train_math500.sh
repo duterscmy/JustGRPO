@@ -12,7 +12,7 @@ source ~/.bashrc # 你的环境名
 conda activate ttrl
 
 
-output_dir=./checkpoints_math500_num_generation8
+output_dir=./checkpoints_math500_num_generation16
 mkdir -p $output_dir
 accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_math500.py \
   --run_dir $output_dir \
