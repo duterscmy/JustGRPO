@@ -40,6 +40,7 @@ accelerate launch --num_processes 1 \
     --model "llada" \
     --apply_chat_template \
     --num_fewshot 0 \
+    --output_path ${target_dir}/${base_name} \
     --model_args "pretrained=$model_path,max_new_tokens=1024,steps=1024,block_size=32,cfg_scale=0.0,suppress_tokens=[],begin_suppress_tokens=[126081;126348]"
 
 
