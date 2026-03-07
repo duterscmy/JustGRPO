@@ -17,4 +17,4 @@ mkdir -p $output_dir
 accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_gsm8k.justgrpo.py \
   --run_dir $output_dir \
   --grad_accum 16 \
- --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_gsm8k_justgrpo/training-state-000007 >> $output_dir.log 2>&1
+ --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_gsm8k_justgrpo/training-state-000014 >> $output_dir.log 2>&1
