@@ -28,7 +28,7 @@ class TrainConfig:
     seed: int = 1234
     num_generations: int = 4
     repeat_times: int = 1
-    sample_repeat_times: int = 4
+    sample_repeat_times: int = 2
     gen_steps: int = 256
     gen_length: int = 256
 
@@ -161,6 +161,7 @@ def train(config: TrainConfig):
                             tokenizer=tokenizer,
                             device=device,
                             reward_fn=reward_fn,
+                            temperature=0.6,
                             num_generations=config.num_generations,
                             steps=config.gen_steps,
                             gen_length=config.gen_length,
