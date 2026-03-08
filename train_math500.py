@@ -31,6 +31,7 @@ class TrainConfig:
     sample_repeat_times: int = 2
     gen_steps: int = 256
     gen_length: int = 256
+    temperature: float = 0.3
 
     # --- Misc ---
     output_dir: str = "./checkpoints_math500_num_generation{}".format(num_generations)
@@ -161,7 +162,7 @@ def train(config: TrainConfig):
                             tokenizer=tokenizer,
                             device=device,
                             reward_fn=reward_fn,
-                            temperature=0.6,
+                            temperature=config.temperature,
                             num_generations=config.num_generations,
                             steps=config.gen_steps,
                             gen_length=config.gen_length,
@@ -248,6 +249,7 @@ def parse_args():
     parser.add_argument("--run_dir", type=str, default="./checkpoints", help="Output directory")
     parser.add_argument("--grad_accum", type=int, default=8, help="Gradient accumulation steps")
     parser.add_argument("--resume_ckpt", type=str, default=None, help="Resume checkpoint path")
+    parser.add_argument("--temperature", type=float, default=1.0,  help="rollout temperature")
     
     return parser.parse_args()
 
@@ -260,6 +262,7 @@ if __name__ == "__main__":
         output_dir=args.run_dir,
         grad_accumulation=args.grad_accum,
         resume_ckpt=args.resume_ckpt,
+        temperature= args.temperature
     )
 
     train(config)
