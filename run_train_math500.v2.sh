@@ -12,7 +12,7 @@ source ~/.bashrc # 你的环境名
 conda activate ttrl
 
 t=0.3
-lr=5e-8
+lr=5e-7
 output_dir=./checkpoints_math500_num_generation16_t${t}_lr${lr}
 #   --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_t0.3/training-state-000005 \
 mkdir -p $output_dir
