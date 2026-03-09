@@ -1,0 +1,23 @@
+#!/bin/bash
+#SBATCH --job-name="train_math8"
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=4
+#SBATCH --gres=gpu:4                # 请求8块GPU
+#SBATCH --time=24:00:00
+#SBATCH -o slurm.%j.%N.out
+#SBATCH -e slurm.%j.%N.err
+
+### 激活conda环境
+source ~/.bashrc # 你的环境名
+conda activate ttrl
+
+t=0.3
+lr=5e-8
+output_dir=./checkpoints_math500_num_generation16_t${t}_lr${lr}
+#   --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_t0.3/training-state-000005 \
+mkdir -p $output_dir
+accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_math500.py \
+  --run_dir $output_dir \
+  --temperature ${t} \
+  --lr $lr \
+  --grad_accum 16 >> $output_dir.log 2>&1
