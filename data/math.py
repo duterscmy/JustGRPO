@@ -82,6 +82,7 @@ def reward_gsm8k_ttrl(batch, responses, num_generations, device):
     
     # 将 responses 按问题分组
     answer = list(batch['answers'])[0]
+    print("correct answer: {}".format(answer))
     num_problems = len(responses) // num_generations
     rewards = torch.zeros(len(responses), device=device)
     
