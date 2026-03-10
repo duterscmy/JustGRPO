@@ -32,6 +32,7 @@ class TrainConfig:
     sample_repeat_times: int = 1
     gen_steps: int = 256
     gen_length: int = 256
+    block_size: int = 1
 
     # --- Misc ---
     output_dir: str = "./checkpoints"
@@ -165,7 +166,8 @@ def train(config: TrainConfig):
                             num_generations=config.num_generations,
                             steps=config.gen_steps,
                             gen_length=config.gen_length,
-                            repeat_time=config.sample_repeat_times
+                            repeat_time=config.sample_repeat_times,
+                            block_size=config.block_size
                         )
                         inputs_chunks.append(inputs)
                         torch.cuda.empty_cache()
@@ -241,6 +243,7 @@ def parse_args():
     parser.add_argument("--run_dir", type=str, default="./checkpoints", help="Output directory")
     parser.add_argument("--grad_accum", type=int, default=8, help="Gradient accumulation steps")
     parser.add_argument("--resume_ckpt", type=str, default=None, help="Resume checkpoint path")
+    parser.add_argument("--block_size", type=int, default=1, help="Generate Block Size")
     
     return parser.parse_args()
 
@@ -253,6 +256,7 @@ if __name__ == "__main__":
         output_dir=args.run_dir,
         grad_accumulation=args.grad_accum,
         resume_ckpt=args.resume_ckpt,
+        block_size=args.block_size,
     )
 
     train(config)

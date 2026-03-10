@@ -5,14 +5,14 @@ from utils.generate import generate
 
 
 @torch.no_grad()
-def sample(model, batch, tokenizer, device, reward_fn=None, num_generations=1, temperature=1., steps=256, gen_length=256):
+def sample(model, batch, tokenizer, device, reward_fn=None, num_generations=1, temperature=1., steps=256, gen_length=256, block_size=1):
     prompts = tokenizer.apply_chat_template([[{"role": "user", "content": p}] for p in batch['problems']],
                                             add_generation_prompt=True, tokenize=False)
     prompt_ids = tokenizer(prompts, return_tensors='pt', padding=True)['input_ids'].to(device)
 
     # Rollout with AR order (block_length=1)
     generated_ids = generate(model=model, prompt=prompt_ids.repeat(num_generations, 1),
-                             steps=steps, gen_length=gen_length, temperature=temperature, block_length=1)
+                             steps=steps, gen_length=gen_length, temperature=temperature, block_length=block_size)
 
     responses = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
     return {
@@ -23,16 +23,17 @@ def sample(model, batch, tokenizer, device, reward_fn=None, num_generations=1, t
 
 
 @torch.no_grad()
-def sample_with_repeat(model, batch, tokenizer, device, reward_fn=None, num_generations=1, temperature=1., steps=256, gen_length=256, repeat_time=1):
+def sample_with_repeat(model, batch, tokenizer, device, reward_fn=None, num_generations=1, temperature=1., steps=256, gen_length=256, repeat_time=1, block_size=1):
     prompts = tokenizer.apply_chat_template([[{"role": "user", "content": p}] for p in batch['problems']],
                                             add_generation_prompt=True, tokenize=False)
     prompt_ids = tokenizer(prompts, return_tensors='pt', padding=True)['input_ids'].to(device)
 
     # Rollout with AR order (block_length=1)
     generate_ids_list = []
+    print("=======block size:{}======".format(block_size))
     for _ in range(repeat_time):
         generated_ids = generate(model=model, prompt=prompt_ids.repeat(num_generations, 1),
-                                steps=steps, gen_length=gen_length, temperature=temperature, block_length=1)
+                                steps=steps, gen_length=gen_length, temperature=temperature, block_length=block_size)
         generate_ids_list.append(generated_ids)
 
     all_generated_ids = torch.cat(generate_ids_list, dim=0)
