@@ -81,6 +81,7 @@ def reward_gsm8k_ttrl(batch, responses, num_generations, device):
     from collections import Counter
     
     # 将 responses 按问题分组
+    answer = list(batch['answers'])[0]
     num_problems = len(responses) // num_generations
     rewards = torch.zeros(len(responses), device=device)
     
@@ -112,8 +113,14 @@ def reward_gsm8k_ttrl(batch, responses, num_generations, device):
             distinct_answer_ratio = distinct_answer_num / all_answer_num
             best_answer_ratio = counter[majority_answer] / all_answer_num
             
-            # 输出多样性统计（特定格式）
-            print(f"diversity| distinct_answer_num: {distinct_answer_num} | all_answer_num: {all_answer_num} | distinct_answer_ratio: {distinct_answer_ratio:.2f} | best_answer_ratio: {best_answer_ratio:.2f}", flush=True)
+            # 计算正确答案数量
+            correct_answer_number = sum(1 for ans in extracted_answers if ans == answer)
+            
+            # 判断最佳答案是否等于正确答案
+            best_is_correct = 1 if majority_answer == answer else 0
+            
+            # 输出多样性统计和正确答案数量（特定格式）
+            print(f"diversity| distinct_answer_num: {distinct_answer_num} | all_answer_num: {all_answer_num} | distinct_answer_ratio: {distinct_answer_ratio:.2f} | best_answer_ratio: {best_answer_ratio:.2f} | correct_answer_number: {correct_answer_number} | best_is_correct: {best_is_correct}", flush=True)
 
             # 根据是否匹配多数投票结果分配奖励
             for i, ans in enumerate(extracted_answers):
