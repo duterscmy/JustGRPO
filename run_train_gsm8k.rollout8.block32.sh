@@ -11,7 +11,7 @@
 source ~/.bashrc # 你的环境名
 conda activate ttrl
 
-output_dir=./checkpoints_gsm8k_num_generation8_test
+output_dir=./checkpoints_gsm8k_num_generation8_test_block32
 mkdir -p $output_dir
 
 #--resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/training-state-000028
