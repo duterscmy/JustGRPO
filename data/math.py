@@ -80,8 +80,12 @@ def reward_gsm8k_ttrl(batch, responses, num_generations, device):
     """
     from collections import Counter
     
-    # 将 responses 按问题分组
-    answer = extract_answer_gsm8k(list(batch['answers'])[0])
+    ground_truth_cot = list(batch['answers'])[0]
+    if "####" in ground_truth_cot:
+        answer = extract_answer_gsm8k(ground_truth_cot)
+    else:
+        answer = extract_answer(ground_truth_cot)
+
     print("======correct answer: {}======".format(answer))
     num_problems = len(responses) // num_generations
     rewards = torch.zeros(len(responses), device=device)
@@ -121,11 +125,7 @@ def reward_gsm8k_ttrl(batch, responses, num_generations, device):
             best_is_correct = 1 if majority_answer == answer else 0
             
             # 输出多样性统计和正确答案数量（特定格式）
-            print(f"diversity| distinct_answer_num: {distinct_answer_num} | \
-                all_answer_num: {all_answer_num} | distinct_answer_ratio: {distinct_answer_ratio:.2f} | \
-                best_answer_ratio: {best_answer_ratio:.2f} | correct_answer_number: {correct_answer_number} | \
-                best_is_correct: {best_is_correct} | extracted_answers: {extracted_answers} | \
-                majority_answer: {majority_answer} | ground_truth_answer: {answer}", flush=True)
+            print(f"diversity| distinct_answer_num: {distinct_answer_num} | all_answer_num: {all_answer_num} | distinct_answer_ratio: {distinct_answer_ratio:.2f} | best_answer_ratio: {best_answer_ratio:.2f} | correct_answer_number: {correct_answer_number} | best_is_correct: {best_is_correct} | extracted_answers: {extracted_answers} | majority_answer: {majority_answer} | ground_truth_answer: {answer}", flush=True)
 
             # 根据是否匹配多数投票结果分配奖励
             for i, ans in enumerate(extracted_answers):

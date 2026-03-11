@@ -28,10 +28,11 @@ class TrainConfig:
     seed: int = 1234
     num_generations: int = 4
     repeat_times: int = 1
-    sample_repeat_times: int = 4
+    sample_repeat_times: int = 2
     gen_steps: int = 256
     gen_length: int = 256
-    temperature: float = 0.3
+    temperature: float = 0.6
+    block_size: int = 1
 
     # --- Misc ---
     output_dir: str = "./checkpoints_math500_num_generation{}".format(num_generations)
@@ -166,16 +167,15 @@ def train(config: TrainConfig):
                             num_generations=config.num_generations,
                             steps=config.gen_steps,
                             gen_length=config.gen_length,
-                            repeat_time=config.sample_repeat_times
+                            repeat_time=config.sample_repeat_times,
+                            block_size=config.block_size
                         )
                         inputs_chunks.append(inputs)
                         torch.cuda.empty_cache()
 
                     # --- Compute Advantages ---
                     rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
-                    print("reward size: {}".format(rewards.size()))
                     advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times * config.sample_repeat_times)
-                    print("advantages size: {}".format(advantages.size()))
                     valid_samples = (advantages != 0).sum()
                     split_advantages = advantages.split(config.num_generations*config.sample_repeat_times, dim=0)
                     for chunk, adv in zip(inputs_chunks, split_advantages):
@@ -183,64 +183,64 @@ def train(config: TrainConfig):
                     
                     accelerator.wait_for_everyone()
 
-                    # --- Compute Loss ---
-                    print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Computing loss...")
-                    model.train()
-                    for inputs in inputs_chunks:
-                        logprob_loss(
-                            model=model,
-                            inputs=inputs,
-                            valid_samples=valid_samples,
-                            gain=1.0,
-                            accelerator=accelerator,
-                            gen_length=config.gen_length,
-                        )
-                        all_rewards.append(inputs['rewards'].detach())
+    #                 # --- Compute Loss ---
+    #                 print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Computing loss...")
+    #                 model.train()
+    #                 for inputs in inputs_chunks:
+    #                     logprob_loss(
+    #                         model=model,
+    #                         inputs=inputs,
+    #                         valid_samples=valid_samples,
+    #                         gain=1.0,
+    #                         accelerator=accelerator,
+    #                         gen_length=config.gen_length,
+    #                     )
+    #                     all_rewards.append(inputs['rewards'].detach())
                 
-                accelerator.wait_for_everyone()
+    #             accelerator.wait_for_everyone()
                 
-                for key in list(inputs.keys()):
-                    del inputs[key]
+    #             for key in list(inputs.keys()):
+    #                 del inputs[key]
 
-        # --- Grad Clip & Optimizer Step ---
-        for param in model.parameters():
-            if param.grad is not None:
-                param.grad = param.grad.float()  # add for unknown issue
-                torch.nan_to_num(param.grad, nan=0, posinf=0, neginf=0, out=param.grad)
+    #     # --- Grad Clip & Optimizer Step ---
+    #     for param in model.parameters():
+    #         if param.grad is not None:
+    #             param.grad = param.grad.float()  # add for unknown issue
+    #             torch.nan_to_num(param.grad, nan=0, posinf=0, neginf=0, out=param.grad)
 
-        grad_norm = accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
-        if hasattr(grad_norm, "item"):
-            grad_norm = grad_norm.item()
+    #     grad_norm = accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
+    #     if hasattr(grad_norm, "item"):
+    #         grad_norm = grad_norm.item()
 
-        all_rewards_tensor = torch.cat(all_rewards, dim=0)
-        gathered_rewards = accelerator.gather(all_rewards_tensor)
-        mean_reward = gathered_rewards.mean().item()
-        print(f"grad_norm: {grad_norm}, reward: {mean_reward}")
+    #     all_rewards_tensor = torch.cat(all_rewards, dim=0)
+    #     gathered_rewards = accelerator.gather(all_rewards_tensor)
+    #     mean_reward = gathered_rewards.mean().item()
+    #     print(f"grad_norm: {grad_norm}, reward: {mean_reward}")
 
         
-        optimizer.step()
+    #     optimizer.step()
         
-        # --- Logging ---
-        if (step + 1) % config.log_every == 0:
-            all_rewards_tensor = torch.cat(all_rewards, dim=0)
-            gathered_rewards = accelerator.gather(all_rewards_tensor)
-            mean_reward = gathered_rewards.mean().item()
-            print(f"[Step {step+1}/{config.total_steps}] reward={mean_reward:.4f}, grad={grad_norm:.4f}")
+    #     # --- Logging ---
+    #     if (step + 1) % config.log_every == 0:
+    #         all_rewards_tensor = torch.cat(all_rewards, dim=0)
+    #         gathered_rewards = accelerator.gather(all_rewards_tensor)
+    #         mean_reward = gathered_rewards.mean().item()
+    #         print(f"[Step {step+1}/{config.total_steps}] reward={mean_reward:.4f}, grad={grad_norm:.4f}")
         
-        # --- Save checkpoint ---
-        if (step + 1) % config.save_every == 0:
-            state_dict = accelerator.get_state_dict(model)
-            save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
-            accelerator.save_state(save_path)
-            if rank == 0:
-                save_path = os.path.join(config.output_dir, f'ckpt-{step+1:06d}')
-                accelerator.unwrap_model(model).save_pretrained(
-                    save_path, state_dict=state_dict, safe_serialization=True
-                )
-            print(f"Saved checkpoint to {save_path}")
-        accelerator.wait_for_everyone()
+    #     # --- Save checkpoint ---
+    #     if (step + 1) % config.save_every == 0:
+    #         state_dict = accelerator.get_state_dict(model)
+    #         save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
+    #         accelerator.save_state(save_path)
+    #         if rank == 0:
+    #             save_path = os.path.join(config.output_dir, f'ckpt-{step+1:06d}')
+    #             accelerator.unwrap_model(model).save_pretrained(
+    #                 save_path, state_dict=state_dict, safe_serialization=True
+    #             )
+    #         print(f"Saved checkpoint to {save_path}")
+    #     accelerator.wait_for_everyone()
     
-    print("\nTraining complete!")
+    # print("\nTraining complete!")
 
 
 def parse_args():
@@ -251,6 +251,7 @@ def parse_args():
     parser.add_argument("--resume_ckpt", type=str, default=None, help="Resume checkpoint path")
     parser.add_argument("--temperature", type=float, default=1.0,  help="rollout temperature")
     parser.add_argument("--lr", type=float, default=5e-6,  help="lr")
+    parser.add_argument("--block_size", type=int, default=1, help="Generate Block Size")
     
     return parser.parse_args()
 
@@ -264,7 +265,8 @@ if __name__ == "__main__":
         grad_accumulation=args.grad_accum,
         resume_ckpt=args.resume_ckpt,
         temperature= args.temperature,
-        learning_rate= args.lr
+        learning_rate= args.lr,
+        block_size=args.block_size,
     )
 
     train(config)
