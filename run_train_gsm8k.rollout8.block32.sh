@@ -19,5 +19,5 @@ mkdir -p $output_dir
 accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_gsm8k.rollout8.py \
   --run_dir $output_dir \
   --block_size 32 \
-  --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_gsm8k_num_generation8_test_block32/training-state-000005 \
+  --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_gsm8k_num_generation8_test_block32/training-state-000010 \
   --grad_accum 16 >> $output_dir.log 2>&1
