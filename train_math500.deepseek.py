@@ -15,16 +15,6 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
 def generate_with_deepseek(model, tokenizer, prompts, device, num_generations=1, temperature=0.6, max_new_tokens=256):
     """
     使用DeepSeek模型的generate方法生成回复
-    参考DeepSeek官方推理代码
-    
-    Args:
-        model: DeepSeek模型
-        tokenizer: 对应的tokenizer
-        prompts: 提示词列表
-        device: 设备
-        num_generations: 每个prompt生成的回复数
-        temperature: 采样温度
-        max_new_tokens: 最大新token数
     """
     # 设置generation_config
     if not hasattr(model, 'generation_config') or model.generation_config is None:
@@ -34,10 +24,9 @@ def generate_with_deepseek(model, tokenizer, prompts, device, num_generations=1,
     if model.generation_config.pad_token_id is None:
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
     
-    # 应用聊天模板 - DeepSeek方式
+    # 应用聊天模板
     formatted_prompts = []
     for p in prompts:
-        # DeepSeek使用标准的chat模板
         messages = [{"role": "user", "content": p}]
         formatted_prompts.append(tokenizer.apply_chat_template(
             messages,
@@ -51,24 +40,24 @@ def generate_with_deepseek(model, tokenizer, prompts, device, num_generations=1,
         return_tensors='pt', 
         padding=True, 
         truncation=True,
-        max_length=2048  # DeepSeek常用max_length
+        max_length=2048
     ).to(device)
     
     # 重复输入以生成多个样本
     input_ids = inputs['input_ids'].repeat_interleave(num_generations, dim=0)
     attention_mask = inputs['attention_mask'].repeat_interleave(num_generations, dim=0)
     
-    # 生成配置 - 参考DeepSeek官方代码
+    # 生成配置
     gen_kwargs = {
         'max_new_tokens': max_new_tokens,
         'do_sample': temperature > 0,
         'temperature': temperature if temperature > 0 else 1.0,
-        'top_p': 0.95 if temperature > 0 else 1.0,  # DeepSeek常用top_p
-        'top_k': 50 if temperature > 0 else None,   # DeepSeek常用top_k
+        'top_p': 0.95 if temperature > 0 else 1.0,
+        'top_k': 50 if temperature > 0 else None,
         'pad_token_id': tokenizer.pad_token_id or model.generation_config.pad_token_id,
         'eos_token_id': tokenizer.eos_token_id or model.generation_config.eos_token_id,
         'use_cache': True,
-        'repetition_penalty': 1.0,  # DeepSeek常用设置
+        'repetition_penalty': 1.0,
         'length_penalty': 1.0,
     }
     
@@ -80,7 +69,7 @@ def generate_with_deepseek(model, tokenizer, prompts, device, num_generations=1,
             **gen_kwargs
         )
     
-    return generated_ids
+    return generated_ids, input_ids.shape[1]  # 返回生成的ids和prompt长度
 
 def sample_with_repeat_deepseek(model, batch, tokenizer, device, reward_fn=None, 
                                num_generations=1, temperature=0.6, max_new_tokens=256, 
@@ -88,12 +77,23 @@ def sample_with_repeat_deepseek(model, batch, tokenizer, device, reward_fn=None,
     """
     使用DeepSeek的generate方法采样的版本
     """
-    prompts = batch['problems']  # 原始问题列表
+    prompts = batch['problems']
+    
+    # 预先计算每个prompt的长度
+    prompt_lengths = []
+    for p in prompts:
+        prompt_tensor = tokenizer.apply_chat_template(
+            [{"role": "user", "content": p}],
+            add_generation_prompt=True,
+            return_tensors="pt"
+        ).to(device)
+        prompt_lengths.append(prompt_tensor.shape[1])
     
     generate_ids_list = []
+    all_prompt_lengths = []
     
     for _ in range(repeat_time):
-        generated_ids = generate_with_deepseek(
+        generated_ids, prompt_len = generate_with_deepseek(
             model=model,
             tokenizer=tokenizer,
             prompts=prompts,
@@ -103,50 +103,69 @@ def sample_with_repeat_deepseek(model, batch, tokenizer, device, reward_fn=None,
             max_new_tokens=max_new_tokens
         )
         generate_ids_list.append(generated_ids)
+        all_prompt_lengths.append(prompt_len)
         
         # 清理缓存
         torch.cuda.empty_cache()
     
-    all_generated_ids = torch.cat(generate_ids_list, dim=0)
+    # 找到最大的序列长度，用于padding
+    max_len = max([ids.shape[1] for ids in generate_ids_list])
+    
+    # 将所有序列padding到相同长度
+    padded_generate_ids = []
+    for ids in generate_ids_list:
+        if ids.shape[1] < max_len:
+            # 需要padding
+            pad_len = max_len - ids.shape[1]
+            pad_tensor = torch.full((ids.shape[0], pad_len), 
+                                   tokenizer.pad_token_id, 
+                                   device=ids.device, 
+                                   dtype=ids.dtype)
+            ids = torch.cat([ids, pad_tensor], dim=1)
+        padded_generate_ids.append(ids)
+    
+    # 现在可以安全地concat了
+    all_generated_ids = torch.cat(padded_generate_ids, dim=0)
     
     # 解码生成的回复 - 只保留新生成的部分
     responses = []
-    prompt_lengths = []
-    
-    # 为每个输入计算prompt长度
-    for i, p in enumerate(prompts):
-        # 获取当前prompt的编码长度作为参考
-        prompt_tensor = tokenizer.apply_chat_template(
-            [{"role": "user", "content": p}],
-            add_generation_prompt=True,
-            return_tensors="pt"
-        ).to(device)
-        prompt_lengths.append(prompt_tensor.shape[1])
     
     # 对每个生成的序列进行解码
     for i, gen_ids in enumerate(all_generated_ids):
+        # 找出对应的prompt
         prompt_idx = i // num_generations  # 找到对应的prompt索引
-        prompt_len = prompt_lengths[prompt_idx]
+        repeat_idx = i // (num_generations * len(prompts))  # 找到对应的repeat索引
+        
+        # 获取对应的prompt长度
+        if repeat_idx < len(all_prompt_lengths):
+            prompt_len = all_prompt_lengths[repeat_idx]
+        else:
+            prompt_len = prompt_lengths[prompt_idx % len(prompts)]
+        
+        # 去除padding token
+        gen_ids = gen_ids[gen_ids != tokenizer.pad_token_id]
         
         # 只取新生成的部分
+        if len(gen_ids) > prompt_len:
+            response_ids = gen_ids[prompt_len:]
+        else:
+            response_ids = gen_ids
+        
         response = tokenizer.decode(
-            gen_ids[prompt_len:], 
+            response_ids, 
             skip_special_tokens=True
         )
         responses.append(response)
     
     # 计算每个回复的奖励
-    # 注意：reward_fn需要适应DeepSeek的输出格式
     rewards = reward_fn(batch, responses, num_generations * repeat_time, device).float()
     
     return {
         'generated_ids': all_generated_ids,
-        'prompt_len': prompt_lengths[0] if prompt_lengths else 0,  # 使用第一个prompt长度作为近似
+        'prompt_len': prompt_lengths[0] if prompt_lengths else 0,
         'rewards': rewards,
-        'responses': responses,  # 可选：返回解码后的回复供调试
+        'responses': responses,
     }
-
-
 
 @dataclass
 class TrainConfig:
