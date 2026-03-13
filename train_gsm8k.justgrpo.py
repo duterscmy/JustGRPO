@@ -23,7 +23,7 @@ class TrainConfig:
     batch_size_per_device: int = 1
     grad_accumulation: int = 8
     # total_steps: int = 125
-    total_steps: int = 50
+    total_steps: int = 35
     learning_rate: float = 5e-6
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
