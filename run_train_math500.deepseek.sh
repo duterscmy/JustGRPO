@@ -13,7 +13,7 @@ conda activate ttrl
 
 t=0.6
 lr=5e-6
-output_dir=./checkpoints_math500_deepseek8b_num_generation_t${t}_lr${lr}_only_rollout
+output_dir=./checkpoints_math500_deepseek8b_num_generation32_t${t}_lr${lr}_only_rollout
 
 #   --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_t0.3/training-state-000005 \
 
@@ -23,4 +23,4 @@ accelerate launch --num_processes 1 --main_process_ip localhost --config_file co
   --temperature ${t} \
   --lr $lr \
   --max_new_tokens 3072 \
-  --grad_accum 16 #>> $output_dir.log 2>&1
+  --grad_accum 16 >> $output_dir.log 2>&1

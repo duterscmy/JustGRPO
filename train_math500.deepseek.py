@@ -184,7 +184,7 @@ class TrainConfig:
     seed: int = 1234
     num_generations: int = 4
     repeat_times: int = 1
-    sample_repeat_times: int = 2
+    sample_repeat_times: int = 8
     max_new_tokens: int = 256  # 替换原来的gen_steps和gen_length
     temperature: float = 0.6
     # 移除block_size参数
