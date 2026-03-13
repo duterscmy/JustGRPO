@@ -22,4 +22,5 @@ accelerate launch --num_processes 1 --main_process_ip localhost --config_file co
   --run_dir $output_dir \
   --temperature ${t} \
   --lr $lr \
+  --max_new_tokens 3072 \
   --grad_accum 16 #>> $output_dir.log 2>&1
