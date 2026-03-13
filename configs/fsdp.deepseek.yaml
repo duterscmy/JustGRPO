@@ -1,9 +1,8 @@
 compute_environment: LOCAL_MACHINE
 debug: false
 fsdp_config:
-    auto_wrap_policy: TRANSFORMER_BASED_WRAP
+    auto_wrap_policy: NO_WRAP
     fsdp: 'full_shard'
-    transformer_layer_cls_to_wrap: "DeepseekV2DecoderLayer, DeepseekV2RMSNorm, DeepseekV2MLP, DeepseekV2Attention, Linear, Embedding"
     limit_all_gathers: true
     use_orig_params: true
     sync_module_states: true
