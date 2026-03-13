@@ -18,7 +18,7 @@ output_dir=./checkpoints_math500_qwen_math_1.5b_num_generation_t${t}_lr${lr}
 #   --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_t0.3/training-state-000005 \
 
 mkdir -p $output_dir
-accelerate launch --num_processes 1 --main_process_ip localhost --config_file configs/fsdp.yaml train_math500.qwen1.5b.py \
+accelerate launch --num_processes 1 --main_process_ip localhost --config_file configs/fsdp.qwen.yaml train_math500.qwen1.5b.py \
   --run_dir $output_dir \
   --temperature ${t} \
   --lr $lr \
