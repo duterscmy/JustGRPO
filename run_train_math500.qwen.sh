@@ -13,7 +13,7 @@ conda activate ttrl
 
 t=0.6
 lr=5e-6
-output_dir=./checkpoints_math500_qwen_math_1.5b_num_generation_t${t}_lr${lr}
+output_dir=./checkpoints_math500_qwen_math_1.5b_num_generation_t${t}_lr${lr}_only_rollout
 
 #   --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_t0.3/training-state-000005 \
 
