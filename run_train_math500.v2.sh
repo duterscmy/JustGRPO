@@ -19,7 +19,7 @@ output_dir=./checkpoints_math500_num_generation32_block${block}_t${t}_lr${lr}_on
 #   --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_t0.3/training-state-000005 \
 
 mkdir -p $output_dir
-accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_math500.py \
+accelerate launch --num_processes 1 --main_process_ip localhost --config_file configs/fsdp.yaml train_math500.py \
   --run_dir $output_dir \
   --temperature ${t} \
   --lr $lr \
