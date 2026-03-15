@@ -108,6 +108,7 @@ def train(config: TrainConfig):
         weight_decay=config.weight_decay,
     )
     
+    
     # --- Accelerator setup ---
     accelerator = dist.get_accelerator()
     model, optimizer, dataloader = accelerator.prepare(model, optimizer, dataloader)
