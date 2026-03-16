@@ -24,5 +24,5 @@ accelerate launch --num_processes 4 --main_process_ip localhost --config_file co
   --temperature ${t} \
   --lr $lr \
   --block_size $block \
-  --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_block32_t0.6_lr5e-6/training-state-000005 \
+  --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_block32_t0.6_lr5e-6/training-state-000010 \
   --grad_accum 16 >> $output_dir.log 2>&1
