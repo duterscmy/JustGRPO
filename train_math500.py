@@ -187,20 +187,20 @@ def train(config: TrainConfig):
                     accelerator.wait_for_everyone()
 
                     # --- Compute Loss ---
-                    print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Computing loss...")
-                    model.train()
-                    for inputs in inputs_chunks:
-                        logprob_loss(
-                            model=model,
-                            inputs=inputs,
-                            valid_samples=valid_samples,
-                            gain=1.0,
-                            accelerator=accelerator,
-                            gen_length=config.gen_length,
-                        )
-                        all_rewards.append(inputs['rewards'].detach())
+                #     print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Computing loss...")
+                #     model.train()
+                #     for inputs in inputs_chunks:
+                #         logprob_loss(
+                #             model=model,
+                #             inputs=inputs,
+                #             valid_samples=valid_samples,
+                #             gain=1.0,
+                #             accelerator=accelerator,
+                #             gen_length=config.gen_length,
+                #         )
+                #         all_rewards.append(inputs['rewards'].detach())
                 
-                accelerator.wait_for_everyone()
+                # accelerator.wait_for_everyone()
                 
                 # for key in list(inputs.keys()):
                 #     del inputs[key]
