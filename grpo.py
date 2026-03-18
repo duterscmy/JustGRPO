@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 
-from utils.generate import generate
+from utils.generate import generate, generate_with_confidence
 
 
 @torch.no_grad()
@@ -37,6 +37,30 @@ def sample_with_repeat(model, batch, tokenizer, device, reward_fn=None, num_gene
         generate_ids_list.append(generated_ids)
 
     all_generated_ids = torch.cat(generate_ids_list, dim=0)
+    responses = tokenizer.batch_decode(all_generated_ids, skip_special_tokens=True)
+    return {
+        'generated_ids': all_generated_ids,
+        'prompt_len': prompt_ids.shape[1],
+        'rewards': reward_fn(batch, responses, num_generations*repeat_time, device).float(),
+    }
+
+
+@torch.no_grad()
+def sample_with_repeat_rank(model, batch, tokenizer, device, reward_fn=None, num_generations=1, temperature=1., steps=256, gen_length=256, repeat_time=1, block_size=1):
+    prompts = tokenizer.apply_chat_template([[{"role": "user", "content": p}] for p in batch['problems']],
+                                            add_generation_prompt=True, tokenize=False)
+    prompt_ids = tokenizer(prompts, return_tensors='pt', padding=True)['input_ids'].to(device)
+
+    generate_ids_list = []
+    print("=======block size:{}======".format(block_size))
+    for _ in range(repeat_time):
+        generated_ids, ave_conf = generate_with_confidence(model=model, prompt=prompt_ids.repeat(num_generations, 1),
+                                steps=steps, gen_length=gen_length, temperature=temperature, block_length=block_size)
+        generate_ids_list.append((generated_ids, ave_conf))
+    generate_ids_list = sorted(generate_ids_list, key=lambda x: x[1], reverse=True)  # Sort by average confidence
+    print("retain top {} generations based on confidence".format(int(num_generations*repeat_time/2)))
+    generate_ids_list = generate_ids_list[:int(num_generations*repeat_time/2)]  # Keep top half
+    all_generated_ids = torch.stack([x[0] for x in generate_ids_list])
     responses = tokenizer.batch_decode(all_generated_ids, skip_special_tokens=True)
     return {
         'generated_ids': all_generated_ids,

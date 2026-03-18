@@ -107,6 +107,100 @@ def generate(model, prompt, steps=128, gen_length=128, block_length=128, tempera
     return x
 
 
+@ torch.no_grad()
+def generate_with_confidence(model, prompt, steps=128, gen_length=128, block_length=128, temperature=0.,
+             cfg_scale=0., remasking='low_confidence', mask_id=126336):
+    '''
+    Args:
+        model: Mask predictor.
+        prompt: A tensor of shape (1, L).
+        steps: Sampling steps, less than or equal to gen_length.
+        gen_length: Generated answer length.
+        block_length: Block length, less than or equal to gen_length. If less than gen_length, it means using semi_autoregressive remasking.
+        temperature: Categorical distribution sampling temperature.
+        cfg_scale: Unsupervised classifier-free guidance scale.
+        remasking: Remasking strategy. 'low_confidence' or 'random'.
+        mask_id: The toke id of [MASK] is 126336.
+    
+    Returns:
+        x: Generated sequence of shape (1, prompt_length + gen_length)
+        confidence_means: List of mean confidence values for each generated token
+    '''
+    x = torch.full((prompt.shape[0], prompt.shape[1] + gen_length), mask_id, dtype=torch.long).to(model.device)
+    x[:, :prompt.shape[1]] = prompt.clone()
+
+    prompt_index = (x != mask_id)
+    
+    # 初始化置信度记录
+    token_confidences = []  # 记录每个生成token在不同step的置信度
+
+    assert gen_length % block_length == 0
+    num_blocks = gen_length // block_length
+
+    assert steps % num_blocks == 0
+    steps = steps // num_blocks
+
+    for num_block in range(num_blocks):
+        block_mask_index = (x[:, prompt.shape[1] + num_block * block_length: prompt.shape[1] + (num_block + 1) * block_length:] == mask_id)
+        num_transfer_tokens = get_num_transfer_tokens(block_mask_index, steps)
+        
+        # 为当前block初始化置信度记录
+        block_token_confidences = [[] for _ in range(block_length)]
+        
+        for i in range(steps):
+            mask_index = (x == mask_id)
+            if cfg_scale > 0.:
+                un_x = x.clone()
+                un_x[prompt_index] = mask_id
+                x_ = torch.cat([x, un_x], dim=0)
+                logits = model(x_).logits
+                logits, un_logits = torch.chunk(logits, 2, dim=0)
+                logits = un_logits + (cfg_scale + 1) * (logits - un_logits)
+            else:
+                logits = model(x).logits
+
+            logits_with_noise = add_gumbel_noise(logits, temperature=temperature)
+            x0 = torch.argmax(logits_with_noise, dim=-1) # b, l
+
+            if remasking == 'low_confidence':
+                p = F.softmax(logits, dim=-1)
+                x0_p = torch.squeeze(
+                    torch.gather(p, dim=-1, index=torch.unsqueeze(x0, -1)), -1) # b, l
+            elif remasking == 'random':
+                x0_p = torch.rand((x0.shape[0], x0.shape[1]), device=x0.device)
+            else:
+                raise NotImplementedError(remasking)
+
+            x0_p[:, prompt.shape[1] + (num_block + 1) * block_length:] = -np.inf
+
+            x0 = torch.where(mask_index, x0, x)
+            confidence = torch.where(mask_index, x0_p, -np.inf)
+
+            transfer_index = torch.zeros_like(x0, dtype=torch.bool, device=x0.device)
+            for j in range(confidence.shape[0]):
+                _, select_index = torch.topk(confidence[j], k=num_transfer_tokens[j, i])
+                transfer_index[j, select_index] = True
+                
+                # 记录被选中的token的置信度
+                for idx in select_index:
+                    token_pos = idx.item()
+                    if token_pos >= prompt.shape[1]:  # 只记录生成部分的token
+                        block_pos = token_pos - prompt.shape[1] - num_block * block_length
+                        if 0 <= block_pos < block_length:
+                            block_token_confidences[block_pos].append(x0_p[j, token_pos].item())
+            
+            x[transfer_index] = x0[transfer_index]
+        
+        # 计算当前block每个token的置信度均值并添加到总记录
+        for pos_conf_list in block_token_confidences:
+            if pos_conf_list:
+                token_confidences.append(sum(pos_conf_list) / len(pos_conf_list))
+            else:
+                token_confidences.append(0.0)  # 如果没有记录（理论上不会发生），填充0
+
+    return x, token_confidences
+
+
 def main():
     device = 'cuda'
 
