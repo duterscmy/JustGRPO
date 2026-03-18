@@ -113,7 +113,7 @@ def generate_with_confidence(model, prompt, steps=128, gen_length=128, block_len
     '''
     Args:
         model: Mask predictor.
-        prompt: A tensor of shape (1, L).
+        prompt: A tensor of shape (batch_size, L).
         steps: Sampling steps, less than or equal to gen_length.
         gen_length: Generated answer length.
         block_length: Block length, less than or equal to gen_length. If less than gen_length, it means using semi_autoregressive remasking.
@@ -123,16 +123,17 @@ def generate_with_confidence(model, prompt, steps=128, gen_length=128, block_len
         mask_id: The toke id of [MASK] is 126336.
     
     Returns:
-        x: Generated sequence of shape (1, prompt_length + gen_length)
-        mean_confidence: Scalar mean confidence value of all generated tokens when they were unmasked
+        x: Generated sequence of shape (batch_size, prompt_length + gen_length)
+        mean_confidences: List of scalar mean confidence values for each sample in batch
     '''
-    x = torch.full((prompt.shape[0], prompt.shape[1] + gen_length), mask_id, dtype=torch.long).to(model.device)
+    batch_size = prompt.shape[0]
+    x = torch.full((batch_size, prompt.shape[1] + gen_length), mask_id, dtype=torch.long).to(model.device)
     x[:, :prompt.shape[1]] = prompt.clone()
 
     prompt_index = (x != mask_id)
     
-    # 存储每个token被unmask时的置信度
-    unmask_confidences = []
+    # 为每个batch样本存储被unmask时的置信度
+    unmask_confidences = [[] for _ in range(batch_size)]
 
     assert gen_length % block_length == 0
     num_blocks = gen_length // block_length
@@ -157,12 +158,12 @@ def generate_with_confidence(model, prompt, steps=128, gen_length=128, block_len
                 logits = model(x).logits
 
             logits_with_noise = add_gumbel_noise(logits, temperature=temperature)
-            x0 = torch.argmax(logits_with_noise, dim=-1) # b, l
+            x0 = torch.argmax(logits_with_noise, dim=-1) # batch_size, seq_len
 
             if remasking == 'low_confidence':
                 p = F.softmax(logits, dim=-1)
                 x0_p = torch.squeeze(
-                    torch.gather(p, dim=-1, index=torch.unsqueeze(x0, -1)), -1) # b, l
+                    torch.gather(p, dim=-1, index=torch.unsqueeze(x0, -1)), -1) # batch_size, seq_len
             elif remasking == 'random':
                 x0_p = torch.rand((x0.shape[0], x0.shape[1]), device=x0.device)
             else:
@@ -174,25 +175,27 @@ def generate_with_confidence(model, prompt, steps=128, gen_length=128, block_len
             confidence = torch.where(mask_index, x0_p, -np.inf)
 
             transfer_index = torch.zeros_like(x0, dtype=torch.bool, device=x0.device)
-            for j in range(confidence.shape[0]):
+            for j in range(confidence.shape[0]):  # j 是batch中的样本索引
                 _, select_index = torch.topk(confidence[j], k=num_transfer_tokens[j, i])
                 transfer_index[j, select_index] = True
                 
-                # 记录本次被unmask的token的置信度
+                # 记录当前batch样本中被unmask的token的置信度
                 for idx in select_index:
                     token_pos = idx.item()
                     if token_pos >= prompt.shape[1]:  # 只记录生成部分的token
-                        unmask_confidences.append(x0_p[j, token_pos].item())
+                        unmask_confidences[j].append(x0_p[j, token_pos].item())
             
             x[transfer_index] = x0[transfer_index]
     
-    # 计算所有生成token的置信度均值
-    if unmask_confidences:
-        mean_confidence = sum(unmask_confidences) / len(unmask_confidences)
-    else:
-        mean_confidence = 0.0
+    # 计算每个batch样本的平均置信度
+    mean_confidences = []
+    for conf_list in unmask_confidences:
+        if conf_list:
+            mean_confidences.append(sum(conf_list) / len(conf_list))
+        else:
+            mean_confidences.append(0.0)
 
-    return x, mean_confidence
+    return x, mean_confidences
 
 
 def main():

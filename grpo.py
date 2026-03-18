@@ -53,21 +53,57 @@ def sample_with_repeat_rank(model, batch, tokenizer, device, reward_fn=None, num
 
     generate_ids_list = []
     print("=======block size:{}======".format(block_size))
+    
+    # 由于prompt_ids可能有多个batch样本，我们需要对每个样本分别处理
+    batch_size = prompt_ids.shape[0]
+    total_generations = num_generations * repeat_time
+    
     for _ in range(repeat_time):
-        generated_ids, ave_conf = generate_with_confidence(model=model, prompt=prompt_ids.repeat(num_generations, 1),
-                                steps=steps, gen_length=gen_length, temperature=temperature, block_length=block_size)
-        generate_ids_list.append((generated_ids, ave_conf))
-    generate_ids_list = sorted(generate_ids_list, key=lambda x: x[1], reverse=True)  # Sort by average confidence
-    print("confidense list:", [x[1] for x in generate_ids_list])
-    print("retain top {} generations based on confidence".format(int(num_generations*repeat_time/2)))
-    generate_ids_list = generate_ids_list[:int(num_generations*repeat_time/2)]  # Keep top half
-    all_generated_ids = torch.stack([x[0] for x in generate_ids_list])
-    responses = tokenizer.batch_decode(all_generated_ids, skip_special_tokens=True)
-    return {
-        'generated_ids': all_generated_ids,
-        'prompt_len': prompt_ids.shape[1],
-        'rewards': reward_fn(batch, responses, num_generations*repeat_time, device).float(),
-    }
+        # 为每个batch样本生成num_generations个序列
+        repeated_prompt_ids = prompt_ids.repeat(num_generations, 1)
+        generated_ids, ave_conf_list = generate_with_confidence(
+            model=model, 
+            prompt=repeated_prompt_ids,
+            steps=steps, 
+            gen_length=gen_length, 
+            temperature=temperature, 
+            block_length=block_size
+        )
+        # generated_ids shape: (num_generations * batch_size, prompt_len + gen_length)
+        # ave_conf_list length: num_generations * batch_size
+        
+        # 将生成的序列和对应的置信度配对存储
+        for i in range(len(ave_conf_list)):
+            generate_ids_list.append((generated_ids[i], ave_conf_list[i]))
+    
+    # 按置信度降序排序
+    generate_ids_list = sorted(generate_ids_list, key=lambda x: x[1], reverse=True)
+    print("confidence list:", [x[1] for x in generate_ids_list])
+    
+    # 保留置信度最高的前一半
+    keep_num = int(total_generations * batch_size / 2)  # 修正：考虑batch_size
+    print("retain top {} generations based on confidence".format(keep_num))
+    generate_ids_list = generate_ids_list[:keep_num]
+    
+    # 堆叠保留的生成序列
+    if generate_ids_list:
+        all_generated_ids = torch.stack([x[0] for x in generate_ids_list])
+        responses = tokenizer.batch_decode(all_generated_ids, skip_special_tokens=True)
+        
+        # 注意：这里返回的奖励可能需要对应修改
+        # 因为现在保留的序列数量可能不是num_generations*repeat_time的整数倍
+        return {
+            'generated_ids': all_generated_ids,
+            'prompt_len': prompt_ids.shape[1],
+            'rewards': reward_fn(batch, responses, len(responses), device).float() if reward_fn else None,
+        }
+    else:
+        # 如果没有保留任何序列，返回空结果
+        return {
+            'generated_ids': torch.tensor([]),
+            'prompt_len': prompt_ids.shape[1],
+            'rewards': None,
+        }
 
 
 def logprob_loss(model, inputs, valid_samples, eps=0.2, gain=1.0, temperature=1., accelerator=None,
