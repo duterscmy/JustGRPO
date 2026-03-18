@@ -124,15 +124,15 @@ def generate_with_confidence(model, prompt, steps=128, gen_length=128, block_len
     
     Returns:
         x: Generated sequence of shape (1, prompt_length + gen_length)
-        confidence_means: List of mean confidence values for each generated token
+        mean_confidence: Scalar mean confidence value of all generated tokens when they were unmasked
     '''
     x = torch.full((prompt.shape[0], prompt.shape[1] + gen_length), mask_id, dtype=torch.long).to(model.device)
     x[:, :prompt.shape[1]] = prompt.clone()
 
     prompt_index = (x != mask_id)
     
-    # 初始化置信度记录
-    token_confidences = []  # 记录每个生成token在不同step的置信度
+    # 存储每个token被unmask时的置信度
+    unmask_confidences = []
 
     assert gen_length % block_length == 0
     num_blocks = gen_length // block_length
@@ -143,9 +143,6 @@ def generate_with_confidence(model, prompt, steps=128, gen_length=128, block_len
     for num_block in range(num_blocks):
         block_mask_index = (x[:, prompt.shape[1] + num_block * block_length: prompt.shape[1] + (num_block + 1) * block_length:] == mask_id)
         num_transfer_tokens = get_num_transfer_tokens(block_mask_index, steps)
-        
-        # 为当前block初始化置信度记录
-        block_token_confidences = [[] for _ in range(block_length)]
         
         for i in range(steps):
             mask_index = (x == mask_id)
@@ -181,24 +178,21 @@ def generate_with_confidence(model, prompt, steps=128, gen_length=128, block_len
                 _, select_index = torch.topk(confidence[j], k=num_transfer_tokens[j, i])
                 transfer_index[j, select_index] = True
                 
-                # 记录被选中的token的置信度
+                # 记录本次被unmask的token的置信度
                 for idx in select_index:
                     token_pos = idx.item()
                     if token_pos >= prompt.shape[1]:  # 只记录生成部分的token
-                        block_pos = token_pos - prompt.shape[1] - num_block * block_length
-                        if 0 <= block_pos < block_length:
-                            block_token_confidences[block_pos].append(x0_p[j, token_pos].item())
+                        unmask_confidences.append(x0_p[j, token_pos].item())
             
             x[transfer_index] = x0[transfer_index]
-        
-        # 计算当前block每个token的置信度均值并添加到总记录
-        for pos_conf_list in block_token_confidences:
-            if pos_conf_list:
-                token_confidences.append(sum(pos_conf_list) / len(pos_conf_list))
-            else:
-                token_confidences.append(0.0)  # 如果没有记录（理论上不会发生），填充0
+    
+    # 计算所有生成token的置信度均值
+    if unmask_confidences:
+        mean_confidence = sum(unmask_confidences) / len(unmask_confidences)
+    else:
+        mean_confidence = 0.0
 
-    return x, token_confidences
+    return x, mean_confidence
 
 
 def main():

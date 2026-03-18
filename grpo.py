@@ -58,6 +58,7 @@ def sample_with_repeat_rank(model, batch, tokenizer, device, reward_fn=None, num
                                 steps=steps, gen_length=gen_length, temperature=temperature, block_length=block_size)
         generate_ids_list.append((generated_ids, ave_conf))
     generate_ids_list = sorted(generate_ids_list, key=lambda x: x[1], reverse=True)  # Sort by average confidence
+    print("confidense list:", [x[1] for x in generate_ids_list])
     print("retain top {} generations based on confidence".format(int(num_generations*repeat_time/2)))
     generate_ids_list = generate_ids_list[:int(num_generations*repeat_time/2)]  # Keep top half
     all_generated_ids = torch.stack([x[0] for x in generate_ids_list])
