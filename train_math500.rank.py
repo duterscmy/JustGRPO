@@ -178,9 +178,9 @@ def train(config: TrainConfig):
 
                     # --- Compute Advantages ---
                     rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
-                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times * config.sample_repeat_times)
+                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times * config.sample_repeat_times / 2)
                     valid_samples = (advantages != 0).sum()
-                    split_advantages = advantages.split(config.num_generations*config.sample_repeat_times, dim=0)
+                    split_advantages = advantages.split(config.num_generations*config.sample_repeat_times / 2, dim=0)
                     for chunk, adv in zip(inputs_chunks, split_advantages):
                         chunk["advantages"] = adv
                     
