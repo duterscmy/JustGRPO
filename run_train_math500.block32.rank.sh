@@ -24,4 +24,4 @@ accelerate launch --num_processes 1 --main_process_ip localhost --config_file co
   --temperature ${t} \
   --lr $lr \
   --block_size $block \
-  --grad_accum 16 #>> $output_dir.log 2>&1
+  --grad_accum 16 >> $output_dir.log 2>&1
