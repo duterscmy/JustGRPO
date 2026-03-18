@@ -88,6 +88,7 @@ def sample_with_repeat_rank(model, batch, tokenizer, device, reward_fn=None, num
     # 堆叠保留的生成序列
     if generate_ids_list:
         all_generated_ids = torch.stack([x[0] for x in generate_ids_list])
+        print(all_generated_ids.size())
         responses = tokenizer.batch_decode(all_generated_ids, skip_special_tokens=True)
         
         # 注意：这里返回的奖励可能需要对应修改
