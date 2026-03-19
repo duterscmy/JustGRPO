@@ -14,7 +14,7 @@ conda activate ttrl
 t=0.6
 block=32
 lr=5e-6
-output_dir=./checkpoints_math500_num_generation8_block${block}_t${t}_lr${lr}_rank_16_8
+output_dir=./checkpoints_math500_num_generation8_block${block}_t${t}_lr${lr}_rank_16_8_v2
 
 #   --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_t0.3/training-state-000005 \
 
