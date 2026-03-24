@@ -184,6 +184,8 @@ class FOBARWithLLaDA:
         if not numbers:
             print(f"Warning: No numbers found in user question")
             return {ans: 0.0 for ans in candidate_answers}, {}
+        else:
+            print(f"Extracted numbers from user question: {[num for num, _, _ in numbers]}")
         
         if self.verbose:
             print(f"\n{'='*80}")
@@ -196,6 +198,7 @@ class FOBARWithLLaDA:
         detailed_info = {}  # 存储每个候选答案的详细信息
         
         for candidate in candidate_answers:
+            print(f"\nProcessing candidate answer: {candidate}")
             # 找到对应的assistant
             assistant = None
             assistant_idx = None
@@ -238,7 +241,7 @@ class FOBARWithLLaDA:
                 
                 # LLaDA预测
                 predicted_text, pred_info = self.diffusion_lm.predict_masked(backward_input)
-                
+                print(f"     Predicted text preview: {predicted_text}...")
                 # 从预测文本中提取数字
                 predicted_num = ''.join(pred_info["predicted_tokens"]).strip()
                 
