@@ -23,7 +23,7 @@ class TrainConfig:
     batch_size_per_device: int = 1
     grad_accumulation: int = 8
     # total_steps: int = 125
-    total_steps: int = 40
+    total_steps: int = 10
     learning_rate: float = 5e-6
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
@@ -32,6 +32,7 @@ class TrainConfig:
     repeat_times: int = 2
     gen_steps: int = 256
     gen_length: int = 256
+    block_size: int = 1
 
     # --- Misc ---
     output_dir: str = "./checkpoints_gsm8k_justgrpo"
@@ -164,6 +165,7 @@ def train(config: TrainConfig):
                             num_generations=config.num_generations,
                             steps=config.gen_steps,
                             gen_length=config.gen_length,
+                            block_size=config.block_size,
                         )
                         inputs_chunks.append(inputs)
 
@@ -237,6 +239,7 @@ def parse_args():
     parser.add_argument("--run_dir", type=str, default="./checkpoints", help="Output directory")
     parser.add_argument("--grad_accum", type=int, default=8, help="Gradient accumulation steps")
     parser.add_argument("--resume_ckpt", type=str, default=None, help="Resume checkpoint path")
+    parser.add_argument("--block_size", type=int, default=1, help="Block size for training")
     
     return parser.parse_args()
 
@@ -249,6 +252,7 @@ if __name__ == "__main__":
         output_dir=args.run_dir,
         grad_accumulation=args.grad_accum,
         resume_ckpt=args.resume_ckpt,
+        block_size=args.block_size,
     )
 
     train(config)
