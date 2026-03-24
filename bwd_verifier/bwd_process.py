@@ -38,7 +38,8 @@ class LLaDADiffusionLM:
         self.mask_token_id = 126336
         
         print(f"LLaDA model loaded on {device}")
-        print(f"Mask token ID: {self.mask_token_id}")
+        print(f"Mask token ID: {self.mask_token_id}")       
+        print(f"Mask token text: '{self.tokenizer.decode([self.mask_token_id])}'")
     
     def predict_masked(self, masked_text: str, temperature: float = 0.0) -> Tuple[str, dict]:
         """
