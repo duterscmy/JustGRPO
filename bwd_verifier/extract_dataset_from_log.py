@@ -67,35 +67,70 @@ def parse_log_file(log_file_path):
     assert len(rollouts_list) == len(stats_line_list)
 
     for stats_line, rollouts in zip(stats_line_list, rollouts_list):
+        # 提取统计信息 - 从stats_line中解析key: value对
         ground_truth = None
-        if stats_line:
-            gt_match = re.search(r'ground_truth_answer:\s*(\d+)', stats_line)
-            ground_truth = int(gt_match.group(1)) if gt_match else None
-        
-        # 提取其他统计信息（可选）
         majority = None
         distinct_answer_num = None
         best_answer_ratio = None
         best_is_correct = None
         extracted_answers = []
-        
+
         if stats_line:
-            majority_match = re.search(r'MAJORITY:\s*(\d+)', stats_line)
-            majority = int(majority_match.group(1)) if majority_match else None
+            # 按 | 分割各个字段
+            parts = stats_line.split('|')
             
-            distinct_match = re.search(r'distinct_answer_num:\s*(\d+)', stats_line)
-            distinct_answer_num = int(distinct_match.group(1)) if distinct_match else None
-            
-            ratio_match = re.search(r'best_answer_ratio:\s*([\d.]+)', stats_line)
-            best_answer_ratio = float(ratio_match.group(1)) if ratio_match else None
-            
-            correct_match = re.search(r'best_is_correct:\s*(\d+)', stats_line)
-            best_is_correct = int(correct_match.group(1)) if correct_match else None
-            
-            answers_match = re.search(r'extracted_answers:\s*\[(.*?)\]', stats_line)
-            if answers_match:
-                answers_str = answers_match.group(1)
-                extracted_answers = [ans.strip().strip("'\"") for ans in answers_str.split(',')]
+            for part in parts:
+                part = part.strip()
+                if ':' in part:
+                    key, value = part.split(':', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    
+                    # 根据key来提取对应的值
+                    if key == 'ground_truth_answer':
+                        try:
+                            ground_truth = int(value)
+                        except ValueError:
+                            # 如果不是数字，保持字符串
+                            ground_truth = value
+                            
+                    elif key == 'MAJORITY':
+                        try:
+                            majority = int(value)
+                        except ValueError:
+                            majority = value
+                            
+                    elif key == 'distinct_answer_num':
+                        distinct_answer_num = int(value)
+                        
+                    elif key == 'best_answer_ratio':
+                        best_answer_ratio = float(value)
+                        
+                    elif key == 'best_is_correct':
+                        best_is_correct = int(value)
+                        
+                    elif key == 'extracted_answers':
+                        # 解析列表，格式如: ['-\\frac{5}{2}', '1,5', '5', ...]
+                        # 去除两端的方括号
+                        list_content = value.strip('[]')
+                        if list_content:
+                            # 按 ', ' 分割，但要小心字符串内部的逗号
+                            # 使用简单的正则或逐字符解析
+                            items = []
+                            current = ''
+                            in_quote = False
+                            for char in list_content:
+                                if char == "'" or char == '"':
+                                    in_quote = not in_quote
+                                    current += char
+                                elif char == ',' and not in_quote:
+                                    items.append(current.strip().strip("'\""))
+                                    current = ''
+                                else:
+                                    current += char
+                            if current:
+                                items.append(current.strip().strip("'\""))
+                            extracted_answers = items
         
         # 构建数据条目
         new_rollouts = []
