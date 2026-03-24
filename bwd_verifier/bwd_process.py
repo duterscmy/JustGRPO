@@ -143,12 +143,21 @@ class FOBARWithLLaDA:
     
     def mask_single_number(self, text: str, number_info: Tuple[str, Tuple[int, int], str]) -> str:
         """
-        将单个数字替换为对应长度的[MASK]
-        例如: "-1.5" (4个字符) -> "[MASK][MASK][MASK][MASK]"
+        将单个数字替换为对应token数量的[MASK]
+        需要先tokenize来准确知道该数字占多少个token
         """
         num_str, (start, end), _ = number_info
-        num_length = end - start  # 数字占用的字符数
-        masks = "[MASK]" * num_length  # 每个字符对应一个[MASK]
+        
+        # 获取数字在文本中的原始字符串
+        original_num = text[start:end]
+        
+        # Tokenize这个数字，看它占多少个token
+        num_tokens = self.diffusion_lm.tokenizer.encode(original_num, add_special_tokens=False)
+        num_token_count = len(num_tokens)
+        
+        # 生成对应数量的[MASK]
+        masks = "[MASK]" * num_token_count
+        
         return text[:start] + masks + text[end:]
     
     def compute_forward_scores(self, rollouts: List[Dict]) -> Dict[str, float]:
