@@ -158,7 +158,7 @@ class FOBARWithLLaDA:
         num_token_count = len(num_tokens)
         
         # 生成对应数量的[MASK]
-        masks = self.mask_token_text * num_token_count
+        masks = self.diffusion_lm.mask_token_text * num_token_count
         
         return text[:start] + masks + text[end:]
     
