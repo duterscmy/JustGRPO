@@ -104,6 +104,7 @@ class LLaDADiffusionLM:
                 "predicted_tokens": predicted_tokens,
                 "num_masks": len(mask_positions_list)
             }
+            print(info)
             
         return predicted_text, info
     
@@ -233,49 +234,19 @@ class FOBARWithLLaDA:
                 
                 if self.verbose:
                     print(f"\n  🔍 Testing number {i+1}/{len(numbers)}: {original_num}")
-                    print(f"     Masked input preview: {masked_user[:100]}...")
+                    print(f"     Masked input preview: {masked_user}")
                 
                 # LLaDA预测
                 predicted_text, pred_info = self.diffusion_lm.predict_masked(backward_input)
                 
                 # 从预测文本中提取数字
-                predicted_numbers = self.extract_numbers(predicted_text)
-                
-                # 按顺序匹配
-                predicted_num = None
-                if i < len(predicted_numbers):
-                    predicted_num = predicted_numbers[i][0]
-                    
-                    # 比较数字
-                    is_correct = False
-                    try:
-                        original_float = float(original_num)
-                        predicted_float = float(predicted_num)
-                        is_correct = abs(original_float - predicted_float) < 1e-6
-                    except ValueError:
-                        is_correct = (original_num == predicted_num)
-                    
-                    if is_correct:
-                        correct_count += 1
-                        status = "✓ CORRECT"
-                    else:
-                        status = "✗ WRONG"
-                    
-                    if self.verbose:
-                        print(f"     Predicted: {predicted_num} → {status}")
-                        print(f"     Mask positions: {pred_info['mask_positions']}")
-                        print(f"     Predicted tokens: {pred_info['predicted_tokens']}")
-                else:
-                    predicted_num = None
-                    status = "✗ NOT FOUND"
-                    if self.verbose:
-                        print(f"     No prediction found for this position → {status}")
+                predicted_num = ''.join(pred_info["predicted_tokens"]).strip()
                 
                 # 记录详细预测信息
                 predictions.append({
                     "original_number": original_num,
                     "predicted_number": predicted_num,
-                    "is_correct": is_correct if predicted_num else False,
+                    "is_correct": 1 if predicted_num==original_num else False,
                     "context": context,
                     "masked_position": positions,
                     "prediction_info": {
