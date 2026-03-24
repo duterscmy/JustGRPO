@@ -40,7 +40,7 @@ class LLaDADiffusionLM:
         print(f"LLaDA model loaded on {device}")
         print(f"Mask token ID: {self.mask_token_id}")       
         print(f"Mask token text: '{self.tokenizer.decode([self.mask_token_id])}'")
-    
+        self.mask_token_text = self.tokenizer.decode([self.mask_token_id])
     def predict_masked(self, masked_text: str, temperature: float = 0.0) -> Tuple[str, dict]:
         """
         预测masked文本中被mask的数字
@@ -158,7 +158,7 @@ class FOBARWithLLaDA:
         num_token_count = len(num_tokens)
         
         # 生成对应数量的[MASK]
-        masks = "[MASK]" * num_token_count
+        masks = self.mask_token_text * num_token_count
         
         return text[:start] + masks + text[end:]
     
@@ -242,7 +242,7 @@ class FOBARWithLLaDA:
                 
                 # LLaDA预测
                 predicted_text, pred_info = self.diffusion_lm.predict_masked(backward_input)
-                print(f"     Predicted text preview: {predicted_text}...")
+                print(f"     Predicted text preview: {predicted_text[:len(masked_user)]}")
                 # 从预测文本中提取数字
                 predicted_num = ''.join(pred_info["predicted_tokens"]).strip()
                 
