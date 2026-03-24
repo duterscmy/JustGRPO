@@ -259,7 +259,9 @@ class FOBARWithLLaDA:
                         "num_masks": pred_info['num_masks']
                     }
                 })
-                
+
+                if predicted_num == original_num:
+                    correct_count += 1
             
             score = correct_count / len(numbers)
             backward_scores[candidate] = score
