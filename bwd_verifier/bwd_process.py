@@ -14,7 +14,7 @@ class LLaDADiffusionLM:
     用于FOBAR的后向推理
     """
     
-    def __init__(self, model_path='GSAI-ML/LLaDA-8B-Instruct', device='cuda'):
+    def __init__(self, model_path='/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct', device='cuda'):
         """
         初始化LLaDA模型和tokenizer
         """
@@ -48,16 +48,16 @@ class LLaDADiffusionLM:
             (predicted_text, info) 其中info包含预测的详细信息
         """
         # 1. Tokenize输入
-        messages = [{"role": "user", "content": masked_text}]
-        prompt = self.tokenizer.apply_chat_template(
-            messages, 
-            add_generation_prompt=True, 
-            tokenize=False
-        )
+        # messages = [{"role": "user", "content": masked_text}]
+        # prompt = self.tokenizer.apply_chat_template(
+        #     messages, 
+        #     add_generation_prompt=True, 
+        #     tokenize=False
+        # )
         
         # 编码
         encoded = self.tokenizer(
-            [prompt],
+            [masked_text],
             add_special_tokens=False,
             padding=True,
             return_tensors="pt"
@@ -423,10 +423,20 @@ def process_dataset(dataset_path: str, output_path: str, device='cuda', verbose=
 
 
 if __name__ == "__main__":
-    # 使用示例
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='FOBAR with LLaDA - 使用扩散语言模型进行后向验证')
+    parser.add_argument('input_json', type=str, help='输入JSON文件路径')
+    parser.add_argument('output_json', type=str, help='输出JSON文件路径')
+    parser.add_argument('--device', type=str, default='cuda', help='设备 (cuda/cpu)')
+    parser.add_argument('--verbose', action='store_true', default=True, help='显示详细信息')
+    parser.add_argument('--no-verbose', dest='verbose', action='store_false', help='不显示详细信息')
+    
+    args = parser.parse_args()
+    
     results = process_dataset(
-        "your_dataset.json",
-        "fobar_llada_results_with_details.json",
-        device='cuda',
-        verbose=True  # 设置为False可以减少输出
+        args.input_json,
+        args.output_json,
+        device=args.device,
+        verbose=args.verbose
     )
