@@ -142,9 +142,14 @@ class FOBARWithLLaDA:
         return numbers
     
     def mask_single_number(self, text: str, number_info: Tuple[str, Tuple[int, int], str]) -> str:
-        """将单个数字替换为[MASK]"""
+        """
+        将单个数字替换为对应长度的[MASK]
+        例如: "-1.5" (4个字符) -> "[MASK][MASK][MASK][MASK]"
+        """
         num_str, (start, end), _ = number_info
-        return text[:start] + "[MASK]" + text[end:]
+        num_length = end - start  # 数字占用的字符数
+        masks = "[MASK]" * num_length  # 每个字符对应一个[MASK]
+        return text[:start] + masks + text[end:]
     
     def compute_forward_scores(self, rollouts: List[Dict]) -> Dict[str, float]:
         """计算前向分数"""
@@ -222,68 +227,55 @@ class FOBARWithLLaDA:
                     print(f"     Masked input preview: {masked_user[:100]}...")
                 
                 # LLaDA预测
-                try:
-                    predicted_text, pred_info = self.diffusion_lm.predict_masked(backward_input)
+                predicted_text, pred_info = self.diffusion_lm.predict_masked(backward_input)
+                
+                # 从预测文本中提取数字
+                predicted_numbers = self.extract_numbers(predicted_text)
+                
+                # 按顺序匹配
+                predicted_num = None
+                if i < len(predicted_numbers):
+                    predicted_num = predicted_numbers[i][0]
                     
-                    # 从预测文本中提取数字
-                    predicted_numbers = self.extract_numbers(predicted_text)
+                    # 比较数字
+                    is_correct = False
+                    try:
+                        original_float = float(original_num)
+                        predicted_float = float(predicted_num)
+                        is_correct = abs(original_float - predicted_float) < 1e-6
+                    except ValueError:
+                        is_correct = (original_num == predicted_num)
                     
-                    # 按顺序匹配
-                    predicted_num = None
-                    if i < len(predicted_numbers):
-                        predicted_num = predicted_numbers[i][0]
-                        
-                        # 比较数字
-                        is_correct = False
-                        try:
-                            original_float = float(original_num)
-                            predicted_float = float(predicted_num)
-                            is_correct = abs(original_float - predicted_float) < 1e-6
-                        except ValueError:
-                            is_correct = (original_num == predicted_num)
-                        
-                        if is_correct:
-                            correct_count += 1
-                            status = "✓ CORRECT"
-                        else:
-                            status = "✗ WRONG"
-                        
-                        if self.verbose:
-                            print(f"     Predicted: {predicted_num} → {status}")
-                            print(f"     Mask positions: {pred_info['mask_positions']}")
-                            print(f"     Predicted tokens: {pred_info['predicted_tokens']}")
+                    if is_correct:
+                        correct_count += 1
+                        status = "✓ CORRECT"
                     else:
-                        predicted_num = None
-                        status = "✗ NOT FOUND"
-                        if self.verbose:
-                            print(f"     No prediction found for this position → {status}")
+                        status = "✗ WRONG"
                     
-                    # 记录详细预测信息
-                    predictions.append({
-                        "original_number": original_num,
-                        "predicted_number": predicted_num,
-                        "is_correct": is_correct if predicted_num else False,
-                        "context": context,
-                        "masked_position": positions,
-                        "prediction_info": {
-                            "mask_positions": pred_info['mask_positions'],
-                            "predicted_tokens": pred_info['predicted_tokens'],
-                            "num_masks": pred_info['num_masks']
-                        }
-                    })
-                    
-                except Exception as e:
                     if self.verbose:
-                        print(f"     ❌ Error: {e}")
-                    predictions.append({
-                        "original_number": original_num,
-                        "predicted_number": None,
-                        "is_correct": False,
-                        "context": context,
-                        "masked_position": positions,
-                        "error": str(e)
-                    })
-                    continue
+                        print(f"     Predicted: {predicted_num} → {status}")
+                        print(f"     Mask positions: {pred_info['mask_positions']}")
+                        print(f"     Predicted tokens: {pred_info['predicted_tokens']}")
+                else:
+                    predicted_num = None
+                    status = "✗ NOT FOUND"
+                    if self.verbose:
+                        print(f"     No prediction found for this position → {status}")
+                
+                # 记录详细预测信息
+                predictions.append({
+                    "original_number": original_num,
+                    "predicted_number": predicted_num,
+                    "is_correct": is_correct if predicted_num else False,
+                    "context": context,
+                    "masked_position": positions,
+                    "prediction_info": {
+                        "mask_positions": pred_info['mask_positions'],
+                        "predicted_tokens": pred_info['predicted_tokens'],
+                        "num_masks": pred_info['num_masks']
+                    }
+                })
+                
             
             score = correct_count / len(numbers)
             backward_scores[candidate] = score
