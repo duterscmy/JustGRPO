@@ -88,11 +88,7 @@ def parse_log_file(log_file_path):
                     
                     # 根据key来提取对应的值
                     if key == 'ground_truth_answer':
-                        try:
-                            ground_truth = int(value)
-                        except ValueError:
-                            # 如果不是数字，保持字符串
-                            ground_truth = value
+                        ground_truth = value
                             
                     elif key == 'MAJORITY':
                         try:
