@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from utils.distributed import get_rank, get_world_size
 from data.sampler import InfiniteSampler
 from utils.grader import math_equal
-from utils.parser import extract_answer
+from utils.parser import extract_answer, parse_ground_truth
 
 
 def collate_fn_gsm8k(batch):
@@ -19,10 +19,14 @@ def collate_fn_gsm8k(batch):
     answers = [item['answer'] for item in batch]
     return {"problems": problems, "answers": answers}
 
-def collate_fn_math500(batch):
-    """Collate function for GSM8K dataset."""
-    problems = [item['problem'] for item in batch]
-    answers = [item['solution'] for item in batch]
+def collate_fn_math(batch):
+    """Collate function for MATH dataset."""
+    problems = []
+    answers = []
+    instruct = r"(Please put the final answer in \boxed{} tag, i.e. $\boxed{answer here}$)"
+    for item in batch:
+        problems.append(item['problem'] + instruct)
+        answers.append(item['solution'])
     return {"problems": problems, "answers": answers}
 
 def collate_fn_aime2024(batch):
@@ -65,7 +69,20 @@ def reward_gsm8k(batch, responses, num_generations, device):
     return rewards
 
 
-def reward_gsm8k_ttrl(batch, responses, num_generations, device):
+def reward_MATH(batch, responses, num_generations, device):
+    """Compute reward for MATH responses (+1 correct, -1 incorrect)."""
+    answers = batch['answers'] * num_generations
+    ext_ans = [extract_answer(ans) for ans in answers]
+    ext_res = [parse_ground_truth(res)[1] for res in responses]
+    rewards = torch.zeros(len(answers), device=device)
+    for i, (ans, res) in enumerate(zip(ext_ans, ext_res)):
+        if math_equal(ans, res, timeout=True):
+            rewards[i] = 1.0
+        else:
+            rewards[i] = -1.0
+    return rewards
+
+def reward_ttrl(batch, responses, num_generations, device):
     """
     Compute reward for GSM8K responses using TTRL's majority voting method.
     
@@ -84,7 +101,7 @@ def reward_gsm8k_ttrl(batch, responses, num_generations, device):
     if "####" in ground_truth_cot:
         answer = extract_answer_gsm8k(ground_truth_cot)
     else:
-        answer = extract_answer(ground_truth_cot)
+        answer = parse_ground_truth(ground_truth_cot)[1]
 
     print("======correct answer: {}======".format(answer))
     num_problems = len(responses) // num_generations
@@ -218,7 +235,7 @@ def load_gsm8k_dataset_and_reward(
         pin_memory=True,
     )
     
-    return dataloader, reward_gsm8k_ttrl
+    return dataloader, reward_ttrl
 
 
 def load_math500_dataset_and_reward(
@@ -253,14 +270,14 @@ def load_math500_dataset_and_reward(
     
     dataloader = DataLoader(
         ds,
-        collate_fn=collate_fn_math500,
+        collate_fn=collate_fn_math,
         batch_size=batch_size,
         sampler=sampler,
         num_workers=num_workers,
         pin_memory=True,
     )
     
-    return dataloader, reward_gsm8k_ttrl
+    return dataloader, reward_ttrl
 
 def load_aime2024_dataset_and_reward(
     local_path: str = "Maxwell-Jia/AIME_2024",

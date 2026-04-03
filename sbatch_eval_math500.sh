@@ -32,23 +32,24 @@ log_path="${target_dir}/${base_name}.log"
 
 echo "Logging to: $log_path"
 
-# accelerate launch --num_processes=1 /lus/lfs1aip2/projects/public/u6er/mingyu/llada/eval_llada.py \
-#     --tasks minerva_math500 \
-#     --model llada_dist \
-#     --num_fewshot 0 \
-#     --log_samples \
-#      --output_path ${target_dir}/${base_name} \
-#     --model_args model_path=$model_path,gen_length=256,steps=256,block_length=32 &> "$log_path"
 
 # Use model_args to adjust the sampling arguments for evaluation.
-accelerate launch --num_processes 1 \
-    /lus/lfs1aip2/projects/public/u6er/mingyu/dllm/dllm/pipelines/llada/eval.py \
-    --tasks "minerva_math500" \
-    --model "llada" \
-    --apply_chat_template \
-    --num_fewshot 0 \
-    --output_path ${target_dir}/${base_name} \
-    --model_args "pretrained=$model_path,max_new_tokens=256,steps=256,block_size=32,cfg_scale=0.0,suppress_tokens=[],begin_suppress_tokens=[126081;126348]"
+# accelerate launch --num_processes 1 \
+#     /lus/lfs1aip2/projects/public/u6er/mingyu/dllm/dllm/pipelines/llada/eval.py \
+#     --tasks "minerva_math500" \
+#     --model "llada" \
+#     --apply_chat_template \
+#     --num_fewshot 0 \
+#     --output_path ${target_dir}/${base_name} \
+#     --model_args "pretrained=$model_path,max_new_tokens=256,steps=256,block_size=32,cfg_scale=0.0,suppress_tokens=[],begin_suppress_tokens=[126081;126348]"
+
+
+torchrun --standalone --nproc-per-node=4 eval.py \
+  --ckpt_path "$model_path" \
+  --task math500 \
+  --steps 256 \
+  --gen_length 256 \
+  --block_length 32 &> "$log_path"
 
 
 echo "Evaluation completed!"
