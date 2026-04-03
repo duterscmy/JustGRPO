@@ -9,7 +9,7 @@
 
 ### 激活conda环境
 source ~/.bashrc # 你的环境名
-conda activate llada
+conda activate ttrl
 
 model_path=$1
 cp /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/config.json /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/*py /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/*token* $model_path
