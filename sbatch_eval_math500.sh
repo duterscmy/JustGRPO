@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name="eval_math500"
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:1
+#SBATCH --ntasks-per-node=4
+#SBATCH --gres=gpu:4
 #SBATCH --time=3:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
