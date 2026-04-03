@@ -111,6 +111,96 @@ def generate(model, prompt, steps=128, gen_length=128, block_length=128, tempera
     return x
 
 
+@ torch.no_grad()
+def generate_with_confidence(model, prompt, steps=128, gen_length=128, block_length=128, temperature=0.,
+             cfg_scale=0., remasking='low_confidence', mask_id=126336):
+    '''
+    Args:
+        model: Mask predictor.
+        prompt: A tensor of shape (batch_size, L).
+        steps: Sampling steps, less than or equal to gen_length.
+        gen_length: Generated answer length.
+        block_length: Block length, less than or equal to gen_length. If less than gen_length, it means using semi_autoregressive remasking.
+        temperature: Categorical distribution sampling temperature.
+        cfg_scale: Unsupervised classifier-free guidance scale.
+        remasking: Remasking strategy. 'low_confidence' or 'random'.
+        mask_id: The toke id of [MASK] is 126336.
+    
+    Returns:
+        x: Generated sequence of shape (batch_size, prompt_length + gen_length)
+        mean_confidences: List of scalar mean confidence values for each sample in batch
+    '''
+    batch_size = prompt.shape[0]
+    x = torch.full((batch_size, prompt.shape[1] + gen_length), mask_id, dtype=torch.long).to(model.device)
+    x[:, :prompt.shape[1]] = prompt.clone()
+
+    prompt_index = (x != mask_id)
+    
+    # 为每个batch样本存储被unmask时的置信度
+    unmask_confidences = [[] for _ in range(batch_size)]
+
+    assert gen_length % block_length == 0
+    num_blocks = gen_length // block_length
+
+    assert steps % num_blocks == 0
+    steps = steps // num_blocks
+
+    for num_block in range(num_blocks):
+        block_mask_index = (x[:, prompt.shape[1] + num_block * block_length: prompt.shape[1] + (num_block + 1) * block_length:] == mask_id)
+        num_transfer_tokens = get_num_transfer_tokens(block_mask_index, steps)
+        
+        for i in range(steps):
+            mask_index = (x == mask_id)
+            if cfg_scale > 0.:
+                un_x = x.clone()
+                un_x[prompt_index] = mask_id
+                x_ = torch.cat([x, un_x], dim=0)
+                logits = model(x_).logits
+                logits, un_logits = torch.chunk(logits, 2, dim=0)
+                logits = un_logits + (cfg_scale + 1) * (logits - un_logits)
+            else:
+                logits = model(x).logits
+
+            logits_with_noise = add_gumbel_noise(logits, temperature=temperature)
+            x0 = torch.argmax(logits_with_noise, dim=-1) # batch_size, seq_len
+
+            if remasking == 'low_confidence':
+                p = F.softmax(logits, dim=-1)
+                x0_p = torch.squeeze(
+                    torch.gather(p, dim=-1, index=torch.unsqueeze(x0, -1)), -1) # batch_size, seq_len
+            elif remasking == 'random':
+                x0_p = torch.rand((x0.shape[0], x0.shape[1]), device=x0.device)
+            else:
+                raise NotImplementedError(remasking)
+
+            x0_p[:, prompt.shape[1] + (num_block + 1) * block_length:] = -np.inf
+
+            x0 = torch.where(mask_index, x0, x)
+            confidence = torch.where(mask_index, x0_p, -np.inf)
+
+            transfer_index = torch.zeros_like(x0, dtype=torch.bool, device=x0.device)
+            for j in range(confidence.shape[0]):  # j 是batch中的样本索引
+                _, select_index = torch.topk(confidence[j], k=num_transfer_tokens[j, i])
+                transfer_index[j, select_index] = True
+                
+                # 记录当前batch样本中被unmask的token的置信度
+                for idx in select_index:
+                    token_pos = idx.item()
+                    if token_pos >= prompt.shape[1]:  # 只记录生成部分的token
+                        unmask_confidences[j].append(x0_p[j, token_pos].item())
+            
+            x[transfer_index] = x0[transfer_index]
+    
+    # 计算每个batch样本的平均置信度
+    mean_confidences = []
+    for conf_list in unmask_confidences:
+        if conf_list:
+            mean_confidences.append(sum(conf_list) / len(conf_list))
+        else:
+            mean_confidences.append(0.0)
+
+    return x, mean_confidences
+
 def main():
     device = 'cuda'
 
