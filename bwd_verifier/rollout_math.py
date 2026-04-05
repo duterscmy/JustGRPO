@@ -10,7 +10,7 @@ from transformers import AutoTokenizer, AutoModel
 from tqdm import tqdm
 
 from generate import generate
-from utils.parser import extract_answer, parse_ground_truth
+from ..utils.parser import extract_answer, parse_ground_truth
 
 def set_seed(seed):
     """Set seed for reproducibility"""
@@ -63,7 +63,7 @@ def process_math_dataset(model, tokenizer, device, args):
         print(f"\nProcessing problem {idx + 1}/{len(dataset)}:")
         print(f"Question: {problem}")
         print(f"prompt: {prompt}")
-        
+
         # Tokenize
         encoded = tokenizer(
             prompt,
