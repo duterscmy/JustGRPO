@@ -22,7 +22,7 @@ export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # Run the evaluation script with default parameters
-python rollout_math500.py \
+python rollout_math.py \
     --steps 256 \
     --gen_length 256 \
     --block_length 32 \
