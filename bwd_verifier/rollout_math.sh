@@ -8,7 +8,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --partition=your_partition_name  # Change to your cluster partition
+#SBATCH --partition=a100
 
 # Create logs directory if it doesn't exist
 mkdir -p logs
@@ -31,8 +31,7 @@ python rollout_math.py \
     --num_rollouts 2 \
     --max_problems 5 \
     --add_solve_instruction \
-    --output_file math500_results.json \
-    --save_every 10 \
+    --output_file math500_results.tmp.json \
     --verbose \
     --model_path /mnt/fast/nobackup/scratch4weeks/mc03002/models/LLaDA-8B-Instruct \
     --device cuda \
