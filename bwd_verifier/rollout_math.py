@@ -8,6 +8,10 @@ import torch.nn.functional as F
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModel
 from tqdm import tqdm
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from generate import generate
 from ..utils.parser import extract_answer, parse_ground_truth
