@@ -337,6 +337,18 @@ class AnswerSelector:
         
         return predicted_str
 
+    def _extract_numbers(self, text: str) -> List[Tuple[str, Tuple[int, int], str]]:
+        """从文本中提取数字"""
+        pattern = r'-?\d+\.?\d*'
+        numbers = []
+        for match in re.finditer(pattern, text):
+            num_str = match.group()
+            if num_str and num_str not in ['-', '.']:
+                start = max(0, match.start() - 10)
+                end = min(len(text), match.end() + 10)
+                context = text[start:end]
+                numbers.append((num_str, (match.start(), match.end()), context))
+        return numbers
 
 def evaluate_single_sample(args_tuple):
     """
