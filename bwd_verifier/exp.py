@@ -113,7 +113,7 @@ class LLaDADiffusionLM:
                 "predicted_tokens": predicted_tokens,
                 "num_masks": len(mask_positions_list)
             }
-            print(info)
+            # print(info)
             
         return predicted_text, info
     
@@ -349,6 +349,7 @@ class AnswerSelector:
                 context = text[start:end]
                 numbers.append((num_str, (match.start(), match.end()), context))
         return numbers
+
 
 def evaluate_single_sample(args_tuple):
     """
