@@ -121,7 +121,7 @@ def generate_origin(model, prompt, attention_mask=None, steps=128, gen_length=12
 
 
 @ torch.no_grad()
-def generate(model, prompt, steps=128, gen_length=128, block_length=128, temperature=0.,
+def generate(model, prompt, attention_mask=None, steps=128, gen_length=128, block_length=128, temperature=0.,
              cfg_scale=0., remasking='low_confidence', mask_id=126336, log=False, logits_eos_inf=False, confidence_eos_eot_inf=False):
     '''
     Args:
