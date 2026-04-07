@@ -3,12 +3,15 @@ import argparse
 from typing import List, Dict, Any, Set, Tuple
 from collections import Counter
 import numpy as np
-from utils.grader import math_equal
-from utils.parser import extract_answer, parse_ground_truth
 import torch
 import re
 from transformers import AutoTokenizer, AutoModel
 import torch.nn.functional as F
+import sys, os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.grader import math_equal
+from utils.parser import extract_answer, parse_ground_truth
 
 class LLaDADiffusionLM:
     """
