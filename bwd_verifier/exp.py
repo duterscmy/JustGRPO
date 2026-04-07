@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import sys, os
 from multiprocessing import Pool, cpu_count
 from functools import partial
+from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.grader import math_equal
