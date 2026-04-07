@@ -152,13 +152,6 @@ def generate(model, prompt, attention_mask=None, steps=128, gen_length=128, bloc
     # 获取tokenizer（假设model有tokenizer属性或从model.config获取）
     # 如果没有tokenizer，可以传入或使用其他方式
     tokenizer = getattr(model, 'tokenizer', None)
-    if tokenizer is None:
-        # 尝试从model的config中获取
-        if hasattr(model, 'config') and hasattr(model.config, 'tokenizer'):
-            tokenizer = model.config.tokenizer
-        # else:
-        #     # 如果都没有，创建一个简单的fallback函数
-        #     tokenizer = lambda x: f"<token_{x}>"
     
     # 初始化records列表
     records = []
