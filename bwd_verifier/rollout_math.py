@@ -31,6 +31,7 @@ def process_math_dataset(model, tokenizer, device, args):
     """
     Process the MATH-500 dataset and generate rollouts for each problem
     """
+    model.tokenizer = tokenizer  # Pass tokenizer to model for use in generate function
     print("Loading MATH-500 dataset...")
     dataset = load_dataset("HuggingFaceH4/MATH-500", split="test")
     
