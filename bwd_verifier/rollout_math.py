@@ -11,6 +11,7 @@ from tqdm import tqdm
 import sys
 import os
 
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from generate import generate
@@ -80,12 +81,13 @@ def process_math_dataset(model, tokenizer, device, args):
         
         # Generate multiple rollouts
         rollouts = []
+        rollouts_records = []
         for rollout_idx in range(args.num_rollouts):
             if args.verbose:
                 print(f"\nGenerating rollout {rollout_idx + 1}/{args.num_rollouts} for problem {idx + 1}")
             
             with torch.no_grad():
-                out = generate(
+                out, records = generate(
                     model, 
                     input_ids, 
                     attention_mask, 
@@ -104,12 +106,14 @@ def process_math_dataset(model, tokenizer, device, args):
             
             print(f"Generated rollout {rollout_idx + 1}:\n{generated_text}\n")
             rollouts.append(generated_text)
+            rollouts_records.append(records)
         
         # Store result
         result = {
             "question": problem,
             "prompt": prompt,
             "rollouts": rollouts,
+            "rollouts_records": rollouts_records,
             "solution": solution,
             "answer": extracted_answer
         }
