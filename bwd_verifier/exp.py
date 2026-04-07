@@ -229,16 +229,25 @@ class AnswerSelector:
             "all_answers": answers
         }
     
-    def _compute_backward_scores(self, user: str, candidate_answers: List[str], 
-                                  rollouts: List[str]) -> Dict[str, float]:
-        """计算后向分数"""
+    def compute_backward_scores(self, user: str, candidate_answers: List[str], 
+                                      rollouts: List[str]) -> Dict[str, float]:
+        """
+        计算反向分数（适配Mask Predict模型）
+        
+        关键修改：
+        1. Zc: 统计所有mask位置中预测正确的总数（不是比例）
+        2. PB: 归一化概率，而非正确率
+        3. 使用mask token ID而非字符串"[MASK]"
+        """
         # 提取user中的所有数字
         numbers = self._extract_numbers(user)
         
         if not numbers:
-            return {ans: 0.5 for ans in candidate_answers}
+            # 没有数字时均匀分配概率
+            n_candidates = len(candidate_answers)
+            return {ans: 1.0/n_candidates for ans in candidate_answers}
         
-        backward_scores = {}
+        Z_dict = {}  # 存储每个候选答案的Zc（正确预测总数）
         
         for candidate in candidate_answers:
             # 找到对应的assistant response
@@ -249,42 +258,84 @@ class AnswerSelector:
                     break
             
             if not assistant:
-                backward_scores[candidate] = 0.0
+                Z_dict[candidate] = 0
                 continue
             
-            # 验证每个数字
-            correct_count = 0
+            Zc = 0  # 论文公式(2): 正确预测的总次数
+            
+            # 对每个被mask的数字位置
             for original_num, positions, context in numbers:
-                masked_user = self._mask_single_number(user, original_num, positions)
+                # 创建masked question（使用真正的mask token）
+                masked_user = self._mask_single_number_with_token(user, positions)
+                
+                # 构建反向输入（不需要template，因为mask已经暗示了要预测什么）
                 backward_input = f"{masked_user}\n\n{assistant}"
                 
+                # LLaDA预测（单次，因为是mask predict）
                 predicted_text, pred_info = self.diffusion_lm.predict_masked(backward_input)
-                predicted_num = ''.join(pred_info.get("predicted_tokens", [])).strip()
                 
+                # 提取预测的数字
+                predicted_num = self._extract_predicted_number(pred_info, original_num)
+                
+                # 论文公式(2): 累加正确预测
                 if predicted_num == original_num:
-                    correct_count += 1
+                    Zc += 1
             
-            backward_scores[candidate] = correct_count / len(numbers) if numbers else 0.5
+            Z_dict[candidate] = Zc
         
-        return backward_scores
-    
-    def _extract_numbers(self, text: str) -> List[Tuple[str, Tuple[int, int], str]]:
-        """从文本中提取数字"""
-        pattern = r'-?\d+\.?\d*'
-        numbers = []
-        for match in re.finditer(pattern, text):
-            num_str = match.group()
-            if num_str and num_str not in ['-', '.']:
-                start = max(0, match.start() - 10)
-                end = min(len(text), match.end() + 10)
-                context = text[start:end]
-                numbers.append((num_str, (match.start(), match.end()), context))
-        return numbers
-    
-    def _mask_single_number(self, text: str, num_str: str, positions: Tuple[int, int]) -> str:
-        """将指定数字替换为[MASK]"""
+        # 论文公式(3): 计算PB（归一化概率）
+        total_Z = sum(Z_dict.values())
+        epsilon = 1e-8  # 避免除零
+        PB = {}
+        
+        for candidate, Zc in Z_dict.items():
+            # PB(Aˆc) = (Zc + ε) / (sum(Zc') + ε*|A|)
+            PB[candidate] = (Zc + epsilon) / (total_Z + epsilon * len(candidate_answers))
+        
+        return PB
+
+    def _mask_single_number_with_token(self, text: str, positions: Tuple[int, int]) -> str:
+        """
+        使用真正的mask token替换数字（而非字符串"[MASK]"）
+        需要tokenize来精确定位
+        """
         start, end = positions
-        return text[:start] + "[MASK]" + text[end:]
+        original_num = text[start:end]
+        
+        # Tokenize原始数字，看它占多少个token
+        num_tokens = self.diffusion_lm.tokenizer.encode(original_num, add_special_tokens=False)
+        num_token_count = len(num_tokens)
+        
+        # 生成对应数量的[MASK] token
+        mask_token_text = self.diffusion_lm.tokenizer.decode([self.diffusion_lm.mask_token_id])
+        masks = mask_token_text * num_token_count
+        
+        return text[:start] + masks + text[end:]
+
+    def _extract_predicted_number(self, pred_info: dict, original_num: str) -> str:
+        """
+        从预测信息中提取数字
+        处理可能的格式差异
+        """
+        # 方法1: 从predicted_tokens拼接
+        predicted_tokens = pred_info.get("predicted_tokens", [])
+        predicted_str = ''.join(predicted_tokens).strip()
+        
+        # 清理可能的特殊token
+        predicted_str = re.sub(r'<\|.*?\|>', '', predicted_str)
+        
+        # 如果预测结果为空或无效，返回空字符串
+        if not predicted_str:
+            return ""
+        
+        # 尝试提取数字（可能预测结果包含多余字符）
+        import re
+        numbers = re.findall(r'-?\d+\.?\d*', predicted_str)
+        
+        if numbers:
+            return numbers[0]  # 返回第一个数字
+        
+        return predicted_str
 
 
 def evaluate_single_sample(args_tuple):
