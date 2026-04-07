@@ -229,7 +229,7 @@ class AnswerSelector:
             "all_answers": answers
         }
     
-    def compute_backward_scores(self, user: str, candidate_answers: List[str], 
+    def _compute_backward_scores(self, user: str, candidate_answers: List[str], 
                                       rollouts: List[str]) -> Dict[str, float]:
         """
         计算反向分数（适配Mask Predict模型）
