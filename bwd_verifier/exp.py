@@ -489,14 +489,14 @@ def main():
     parser.add_argument('--use_fobar', action='store_true', 
                         help='Enable FOBAR strategy (requires LLaDA model)')
     parser.add_argument('--model_path', type=str, 
-                        default='/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct',
+                        default='/mnt/fast/nobackup/scratch4weeks/mc03002/models/LLaDA-8B-Instruct',
                         help='Path to LLaDA model for FOBAR')
     parser.add_argument('--device', type=str, default='cuda',
                         help='Device for LLaDA model')
     parser.add_argument('--num_workers', type=int, default=None,
                         help='Number of parallel workers (default: CPU count)')
-    parser.add_argument('--sequential', action='store_true',
-                        help='Use sequential processing instead of parallel')
+    # parser.add_argument('--sequential', action='store_true',
+    #                     help='Use sequential processing instead of parallel')
     
     args = parser.parse_args()
     
@@ -522,7 +522,7 @@ def main():
                 print("Removed fobar from strategies")
     
     # 选择评估器
-    if args.sequential:
+    if 'fobar' in args.strategies:
         print("\nUsing sequential evaluation...")
         evaluator = SequentialEvaluator(
             strategies=args.strategies,
