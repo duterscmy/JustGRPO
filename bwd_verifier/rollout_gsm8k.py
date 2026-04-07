@@ -30,6 +30,7 @@ def process_gsm8k_dataset(model, tokenizer, device, args):
     """
     Process the GSM-8K dataset and generate rollouts for each problem
     """
+    model.tokenizer = tokenizer  # Pass tokenizer to model for use in generate function
     print("Loading GSM-8K dataset...")
     dataset = load_dataset("openai/gsm8k", name="main", split="test")
     
@@ -77,12 +78,13 @@ def process_gsm8k_dataset(model, tokenizer, device, args):
         
         # Generate multiple rollouts
         rollouts = []
+        rollouts_records = []
         for rollout_idx in range(args.num_rollouts):
             if args.verbose:
                 print(f"\nGenerating rollout {rollout_idx + 1}/{args.num_rollouts} for problem {idx + 1}")
             
             with torch.no_grad():
-                out = generate(
+                out, records = generate(
                     model, 
                     input_ids, 
                     attention_mask, 
@@ -101,12 +103,14 @@ def process_gsm8k_dataset(model, tokenizer, device, args):
             
             print(f"Generated rollout {rollout_idx + 1}:\n{generated_text}\n")
             rollouts.append(generated_text)
+            rollouts_records.append(records)
         
         # Store result
         result = {
             "question": problem,
             "prompt": prompt,
             "rollouts": rollouts,
+            "rollouts_records": rollouts_records,
             "solution": solution,
             "answer": extracted_answer
         }
@@ -153,8 +157,8 @@ def main():
     # Output and logging
     parser.add_argument('--output_file', type=str, default='gsm8k_results.json',
                         help='Output JSON file name (default: gsm8k_results.json)')
-    parser.add_argument('--save_intermediate', action='store_true', default=True,
-                        help='Save intermediate results (default: True)')
+    parser.add_argument('--save_intermediate', action='store_true', default=False,
+                        help='Save intermediate results (default: False)')
     parser.add_argument('--save_every', type=int, default=10,
                         help='Save intermediate results every N problems (default: 10)')
     parser.add_argument('--verbose', action='store_true', default=False,

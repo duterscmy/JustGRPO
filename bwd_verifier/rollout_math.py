@@ -161,7 +161,7 @@ def main():
     # Output and logging
     parser.add_argument('--output_file', type=str, default='math500_results.json',
                         help='Output JSON file name (default: math500_results.json)')
-    parser.add_argument('--save_intermediate', action='store_true', default=True,
+    parser.add_argument('--save_intermediate', action='store_true', default=False,
                         help='Save intermediate results (default: True)')
     parser.add_argument('--save_every', type=int, default=10,
                         help='Save intermediate results every N problems (default: 10)')

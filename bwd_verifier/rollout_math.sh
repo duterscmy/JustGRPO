@@ -28,8 +28,8 @@ python rollout_math.py \
     --block_length 32 \
     --temperature 0.6 \
     --remasking low_confidence \
-    --num_rollouts 2 \
-    --max_problems 1 \
+    --num_rollouts 8 \
+    --max_problems -1 \
     --add_solve_instruction \
     --output_file math500_results.add_records.json \
     --verbose \

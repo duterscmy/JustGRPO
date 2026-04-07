@@ -31,7 +31,7 @@ python rollout_gsm8k.py \
     --num_rollouts 8 \
     --max_problems -1 \
     --add_solve_instruction \
-    --output_file gsm8k_results.json \
+    --output_file gsm8k_results.add_records.json \
     --verbose \
     --model_path /mnt/fast/nobackup/scratch4weeks/mc03002/models/LLaDA-8B-Instruct \
     --device cuda \
