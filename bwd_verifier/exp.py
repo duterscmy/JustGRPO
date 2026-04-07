@@ -8,6 +8,8 @@ import re
 from transformers import AutoTokenizer, AutoModel
 import torch.nn.functional as F
 import sys, os
+from multiprocessing import Pool, cpu_count
+from functools import partial
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.grader import math_equal
@@ -128,7 +130,7 @@ class LLaDADiffusionLM:
 class AnswerSelector:
     """答案选择器，支持多种策略"""
     
-    def __init__(self, strategy='first', diffusion_lm=None):
+    def __init__(self, strategy='first', diffusion_lm=None, device='cuda'):
         """
         Args:
             strategy: 选择策略
@@ -136,17 +138,14 @@ class AnswerSelector:
                 - 'majority': 多数投票
                 - 'fobar': 前向+后向验证（需要diffusion_lm）
             diffusion_lm: LLaDA模型实例（仅fobar策略需要）
+            device: 设备
         """
         self.strategy = strategy
         self.diffusion_lm = diffusion_lm
+        self.device = device
     
     def select_answer(self, sample: Dict) -> Tuple[str, Dict]:
-        """
-        根据策略选择最佳答案
-        
-        Returns:
-            (selected_answer, info) 其中info包含选择的详细信息
-        """
+        """根据策略选择最佳答案"""
         rollouts = sample['rollouts']
         
         if self.strategy == 'first':
@@ -160,6 +159,7 @@ class AnswerSelector:
     
     def _select_first(self, rollouts: List[str]) -> Tuple[str, Dict]:
         """直接选择第一个rollout的答案"""
+        # parse_ground_truth 返回 (something, answer) 元组
         first_answer = parse_ground_truth(rollouts[0])[1]
         return first_answer, {
             "strategy": "first",
@@ -230,15 +230,11 @@ class AnswerSelector:
     
     def _compute_backward_scores(self, user: str, candidate_answers: List[str], 
                                   rollouts: List[str]) -> Dict[str, float]:
-        """
-        计算后向分数
-        这里需要调用LLaDA进行验证
-        """
+        """计算后向分数"""
         # 提取user中的所有数字
         numbers = self._extract_numbers(user)
         
         if not numbers:
-            # 如果没有数字，返回均匀分数
             return {ans: 0.5 for ans in candidate_answers}
         
         backward_scores = {}
@@ -258,16 +254,10 @@ class AnswerSelector:
             # 验证每个数字
             correct_count = 0
             for original_num, positions, context in numbers:
-                # 创建masked user
                 masked_user = self._mask_single_number(user, original_num, positions)
-                
-                # 构建反向输入
                 backward_input = f"{masked_user}\n\n{assistant}"
                 
-                # 使用LLaDA预测
                 predicted_text, pred_info = self.diffusion_lm.predict_masked(backward_input)
-                
-                # 提取预测的数字
                 predicted_num = ''.join(pred_info.get("predicted_tokens", [])).strip()
                 
                 if predicted_num == original_num:
@@ -296,42 +286,108 @@ class AnswerSelector:
         return text[:start] + "[MASK]" + text[end:]
 
 
-class Evaluator:
-    """评估器，计算各种策略的准确率"""
+def evaluate_single_sample(args_tuple):
+    """
+    评估单个样本（用于多进程）
+    注意：这个函数需要在模块级别定义，以便可以被pickle序列化
+    """
+    sample, strategy, ground_truth_key, diffusion_lm = args_tuple
     
-    def __init__(self, strategies: List[str] = ['first', 'majority'], diffusion_lm=None):
+    # 创建选择器
+    selector = AnswerSelector(strategy=strategy, diffusion_lm=diffusion_lm)
+    
+    # 选择答案
+    selected_answer, info = selector.select_answer(sample)
+    
+    # 获取标准答案
+    ground_truth = sample.get(ground_truth_key, '')
+    
+    # 判断是否正确
+    is_correct = math_equal(selected_answer, ground_truth)
+    
+    return {
+        "strategy": strategy,
+        "selected_answer": selected_answer,
+        "ground_truth": ground_truth,
+        "is_correct": is_correct,
+        "details": info
+    }
+
+
+class ParallelEvaluator:
+    """并行评估器，支持多进程"""
+    
+    def __init__(self, strategies: List[str] = ['first', 'majority'], 
+                 diffusion_lm=None, num_workers: int = None,
+                 ground_truth_key: str = 'answer'):
         """
         Args:
             strategies: 要评估的策略列表
             diffusion_lm: LLaDA模型实例（仅fobar策略需要）
+            num_workers: 并行进程数，默认为CPU核心数
+            ground_truth_key: ground truth在sample中的key
         """
         self.strategies = strategies
-        self.selectors = {
-            strategy: AnswerSelector(strategy, diffusion_lm if strategy == 'fobar' else None)
-            for strategy in strategies
-        }
-    
-    def evaluate_sample(self, sample: Dict, strategy: str) -> Dict:
-        """评估单个样本的某个策略"""
-        selector = self.selectors[strategy]
-        selected_answer, info = selector.select_answer(sample)
-        
-        # 获取标准答案
-        ground_truth = sample.get('answer', '')
-        
-        # 判断是否正确
-        is_correct = math_equal(selected_answer, ground_truth)
-        
-        return {
-            "strategy": strategy,
-            "selected_answer": selected_answer,
-            "ground_truth": ground_truth,
-            "is_correct": is_correct,
-            "details": info
-        }
+        self.diffusion_lm = diffusion_lm
+        self.num_workers = num_workers or cpu_count()
+        self.ground_truth_key = ground_truth_key
     
     def evaluate_dataset(self, dataset: List[Dict]) -> Dict[str, Any]:
-        """评估整个数据集"""
+        """并行评估整个数据集"""
+        results = {}
+        
+        for strategy in self.strategies:
+            print(f"\n{'='*60}")
+            print(f"Evaluating strategy: {strategy}")
+            print(f"Using {self.num_workers} workers")
+            print(f"{'='*60}")
+            
+            # 准备参数
+            args_list = [
+                (sample, strategy, self.ground_truth_key, self.diffusion_lm if strategy == 'fobar' else None)
+                for sample in dataset
+            ]
+            
+            # 使用多进程池并行处理
+            sample_results = []
+            
+            with Pool(processes=self.num_workers) as pool:
+                # 使用tqdm显示进度
+                for result in tqdm(
+                    pool.imap_unordered(evaluate_single_sample, args_list),
+                    total=len(dataset),
+                    desc=f"Processing {strategy}",
+                    unit="sample"
+                ):
+                    sample_results.append(result)
+            
+            # 统计结果
+            correct_count = sum(1 for r in sample_results if r['is_correct'])
+            accuracy = correct_count / len(dataset) if dataset else 0
+            
+            results[strategy] = {
+                "accuracy": accuracy,
+                "correct": correct_count,
+                "total": len(dataset),
+                "details": sample_results
+            }
+            
+            print(f"\n{strategy.upper()} Accuracy: {correct_count}/{len(dataset)} = {accuracy*100:.2f}%")
+        
+        return results
+
+
+class SequentialEvaluator:
+    """顺序评估器（原始版本，用于对比）"""
+    
+    def __init__(self, strategies: List[str] = ['first', 'majority'], 
+                 diffusion_lm=None, ground_truth_key: str = 'answer'):
+        self.strategies = strategies
+        self.diffusion_lm = diffusion_lm
+        self.ground_truth_key = ground_truth_key
+    
+    def evaluate_dataset(self, dataset: List[Dict]) -> Dict[str, Any]:
+        """顺序评估整个数据集"""
         results = {}
         
         for strategy in self.strategies:
@@ -341,19 +397,29 @@ class Evaluator:
             
             correct_count = 0
             sample_results = []
+            selector = AnswerSelector(strategy=strategy, 
+                                     diffusion_lm=self.diffusion_lm if strategy == 'fobar' else None)
             
-            for i, sample in enumerate(dataset):
-                print(f"\nSample {i+1}/{len(dataset)}")
-                print(f"Question: {sample.get('question', '')[:100]}...")
+            for i, sample in enumerate(tqdm(dataset, desc=f"Processing {strategy}", unit="sample")):
+                # 选择答案
+                selected_answer, info = selector.select_answer(sample)
                 
-                result = self.evaluate_sample(sample, strategy)
-                sample_results.append(result)
+                # 获取标准答案
+                ground_truth = sample.get(self.ground_truth_key, '')
                 
-                if result['is_correct']:
+                # 判断是否正确
+                is_correct = math_equal(selected_answer, ground_truth)
+                
+                sample_results.append({
+                    "strategy": strategy,
+                    "selected_answer": selected_answer,
+                    "ground_truth": ground_truth,
+                    "is_correct": is_correct,
+                    "details": info
+                })
+                
+                if is_correct:
                     correct_count += 1
-                    print(f"✓ Correct: {result['selected_answer']} == {result['ground_truth']}")
-                else:
-                    print(f"✗ Wrong: {result['selected_answer']} != {result['ground_truth']}")
             
             accuracy = correct_count / len(dataset) if dataset else 0
             results[strategy] = {
@@ -426,6 +492,10 @@ def main():
                         help='Path to LLaDA model for FOBAR')
     parser.add_argument('--device', type=str, default='cuda',
                         help='Device for LLaDA model')
+    parser.add_argument('--num_workers', type=int, default=None,
+                        help='Number of parallel workers (default: CPU count)')
+    parser.add_argument('--sequential', action='store_true',
+                        help='Use sequential processing instead of parallel')
     
     args = parser.parse_args()
     
@@ -439,7 +509,6 @@ def main():
     if args.use_fobar or 'fobar' in args.strategies:
         print("\nLoading LLaDA model for FOBAR strategy...")
         try:
-            from llada_model import LLaDADiffusionLM  # 假设你的模型类在这个模块中
             diffusion_lm = LLaDADiffusionLM(
                 model_path=args.model_path,
                 device=args.device
@@ -451,8 +520,22 @@ def main():
                 args.strategies.remove('fobar')
                 print("Removed fobar from strategies")
     
+    # 选择评估器
+    if args.sequential:
+        print("\nUsing sequential evaluation...")
+        evaluator = SequentialEvaluator(
+            strategies=args.strategies,
+            diffusion_lm=diffusion_lm
+        )
+    else:
+        print(f"\nUsing parallel evaluation with {args.num_workers or cpu_count()} workers...")
+        evaluator = ParallelEvaluator(
+            strategies=args.strategies,
+            diffusion_lm=diffusion_lm,
+            num_workers=args.num_workers
+        )
+    
     # 评估
-    evaluator = Evaluator(strategies=args.strategies, diffusion_lm=diffusion_lm)
     results = evaluator.evaluate_dataset(dataset)
     
     # 保存结果
@@ -460,4 +543,5 @@ def main():
 
 
 if __name__ == "__main__":
+    import re  # 添加缺失的导入
     main()
