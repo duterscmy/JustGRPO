@@ -317,6 +317,7 @@ class AnswerSelector:
         从预测信息中提取数字
         处理可能的格式差异
         """
+        import re
         # 方法1: 从predicted_tokens拼接
         predicted_tokens = pred_info.get("predicted_tokens", [])
         predicted_str = ''.join(predicted_tokens).strip()
@@ -329,7 +330,6 @@ class AnswerSelector:
             return ""
         
         # 尝试提取数字（可能预测结果包含多余字符）
-        import re
         numbers = re.findall(r'-?\d+\.?\d*', predicted_str)
         
         if numbers:
