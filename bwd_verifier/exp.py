@@ -832,8 +832,8 @@ def main():
     parser.add_argument('input_file', type=str, help='Input JSON file path')
     parser.add_argument('output_file', type=str, help='Output JSON file path')
     parser.add_argument('--strategies', type=str, nargs='+', 
-                        default=['first', 'majority'],
-                        choices=['first', 'majority', 'fobar'],
+                        default=['first', 'majority', 'highest_confidence', 'weighted_confidence', 'confidence_threshold'],
+                        choices=['first', 'majority', 'fobar','highest_confidence', 'weighted_confidence', 'confidence_threshold'],
                         help='Strategies to evaluate')
     parser.add_argument('--use_fobar', action='store_true', 
                         help='Enable FOBAR strategy (requires LLaDA model)')
