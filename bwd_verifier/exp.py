@@ -356,7 +356,7 @@ def evaluate_single_sample(args_tuple):
     评估单个样本（用于多进程）
     注意：这个函数需要在模块级别定义，以便可以被pickle序列化
     """
-    sample, strategy, ground_truth_key, diffusion_lm = args_tuple
+    sample, strategy, ground_truth_key, diffusion_lm, sample_idx = args_tuple
     
     # 创建选择器
     selector = AnswerSelector(strategy=strategy, diffusion_lm=diffusion_lm)
@@ -371,6 +371,7 @@ def evaluate_single_sample(args_tuple):
     is_correct = math_equal(selected_answer, ground_truth)
     
     return {
+        "sample_idx": sample_idx,  # 添加索引用于排序
         "strategy": strategy,
         "selected_answer": selected_answer,
         "ground_truth": ground_truth,
@@ -380,7 +381,7 @@ def evaluate_single_sample(args_tuple):
 
 
 class ParallelEvaluator:
-    """并行评估器，支持多进程"""
+    """并行评估器，支持多进程（保持结果有序）"""
     
     def __init__(self, strategies: List[str] = ['first', 'majority'], 
                  diffusion_lm=None, num_workers: int = None,
@@ -398,7 +399,7 @@ class ParallelEvaluator:
         self.ground_truth_key = ground_truth_key
     
     def evaluate_dataset(self, dataset: List[Dict]) -> Dict[str, Any]:
-        """并行评估整个数据集"""
+        """并行评估整个数据集（保持原始顺序）"""
         results = {}
         
         for strategy in self.strategies:
@@ -407,24 +408,36 @@ class ParallelEvaluator:
             print(f"Using {self.num_workers} workers")
             print(f"{'='*60}")
             
-            # 准备参数
+            # 准备参数，添加样本索引
             args_list = [
-                (sample, strategy, self.ground_truth_key, self.diffusion_lm if strategy == 'fobar' else None)
-                for sample in dataset
+                (sample, strategy, self.ground_truth_key, 
+                 self.diffusion_lm if strategy == 'fobar' else None, 
+                 idx)  # 添加索引
+                for idx, sample in enumerate(dataset)
             ]
             
             # 使用多进程池并行处理
             sample_results = []
             
             with Pool(processes=self.num_workers) as pool:
-                # 使用tqdm显示进度
+                # 使用imap_unordered获得无序结果，然后按索引排序
+                unordered_results = []
                 for result in tqdm(
                     pool.imap_unordered(evaluate_single_sample, args_list),
                     total=len(dataset),
                     desc=f"Processing {strategy}",
                     unit="sample"
                 ):
-                    sample_results.append(result)
+                    unordered_results.append(result)
+            
+            # 按原始顺序排序
+            unordered_results.sort(key=lambda x: x['sample_idx'])
+            
+            # 移除索引字段（可选）
+            for result in unordered_results:
+                del result['sample_idx']
+            
+            sample_results = unordered_results
             
             # 统计结果
             correct_count = sum(1 for r in sample_results if r['is_correct'])
@@ -440,7 +453,6 @@ class ParallelEvaluator:
             print(f"\n{strategy.upper()} Accuracy: {correct_count}/{len(dataset)} = {accuracy*100:.2f}%")
         
         return results
-
 
 class SequentialEvaluator:
     """顺序评估器（原始版本，用于对比）"""
