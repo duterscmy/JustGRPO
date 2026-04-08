@@ -148,11 +148,20 @@ class AnswerSelector:
     def select_answer(self, sample: Dict) -> Tuple[str, Dict]:
         """根据策略选择最佳答案"""
         rollouts = sample['rollouts']
+        rollouts_records = sample.get('rollouts_records', [])  # 获取置信度记录
         
         if self.strategy == 'first':
             return self._select_first(rollouts)
         elif self.strategy == 'majority':
             return self._select_majority(rollouts)
+        elif self.strategy == 'highest_confidence':
+            return self._select_highest_confidence(rollouts, rollouts_records)
+        elif self.strategy == 'weighted_confidence':
+            return self._select_weighted_confidence(rollouts, rollouts_records)
+        elif self.strategy == 'confidence_threshold':
+            # 可以指定阈值，默认0.9
+            threshold = sample.get('confidence_threshold', 0.9)
+            return self._select_confidence_threshold(rollouts, rollouts_records, threshold)
         elif self.strategy == 'fobar':
             return self._select_fobar(sample)
         else:
@@ -350,6 +359,270 @@ class AnswerSelector:
                 numbers.append((num_str, (match.start(), match.end()), context))
         return numbers
 
+    def _select_highest_confidence(self, rollouts: List[str], rollouts_records: List[List[Dict]]) -> Tuple[str, Dict]:
+        """
+        选择置信度最高的rollout的答案
+        
+        Args:
+            rollouts: 生成的答案文本列表
+            rollouts_records: 每个rollout的解码记录，包含每个token的置信度
+        
+        Returns:
+            (selected_answer, info) 包含置信度详细信息
+        """
+        if not rollouts_records or len(rollouts_records) != len(rollouts):
+            print("Warning: No confidence records found, falling back to first rollout")
+            return self._select_first(rollouts)
+        
+        confidence_scores = []
+        
+        for idx, records in enumerate(rollouts_records):
+            # 按position排序（确保顺序正确）
+            sorted_records = sorted(records, key=lambda x: x.get('position', 0))
+            
+            # 收集所有token的置信度，直到遇到结束token
+            token_confidences = []
+            for record in sorted_records:
+                token_id = record.get('token_id')
+                token_str = record.get('token_str', '')
+                confidence = record.get('confidence', 0.0)
+                
+                # 检查是否是结束token（常见的结束token）
+                is_end_token = (
+                    token_id == 126081 or  # EOS token (根据你的设置)
+                    token_str == '<|endoftext|>' or
+                    token_str == '<|eot_id|>' or
+                    token_str == '</s>' or
+                    (hasattr(self.diffusion_lm, 'tokenizer') and 
+                    token_id == self.diffusion_lm.tokenizer.eos_token_id)
+                )
+                
+                if is_end_token:
+                    break  # 截断到结束token
+                
+                token_confidences.append(confidence)
+            
+            # 计算该rollout的综合置信度
+            if token_confidences:
+                # 多种置信度计算方法
+                avg_confidence = sum(token_confidences) / len(token_confidences)
+                min_confidence = min(token_confidences)
+                prod_confidence = np.prod(token_confidences)  # 几何平均的变体
+                last_confidence = token_confidences[-1] if token_confidences else 0
+                
+                # 使用平均置信度作为主要指标（可根据需要调整）
+                score = avg_confidence
+                
+                confidence_scores.append({
+                    "rollout_idx": idx,
+                    "score": score,
+                    "avg_confidence": avg_confidence,
+                    "min_confidence": min_confidence,
+                    "last_confidence": last_confidence,
+                    "num_tokens": len(token_confidences),
+                    "token_confidences": token_confidences
+                })
+            else:
+                confidence_scores.append({
+                    "rollout_idx": idx,
+                    "score": 0.0,
+                    "avg_confidence": 0.0,
+                    "min_confidence": 0.0,
+                    "last_confidence": 0.0,
+                    "num_tokens": 0,
+                    "token_confidences": []
+                })
+        
+        # 选择置信度最高的rollout
+        best_rollout = max(confidence_scores, key=lambda x: x['score'])
+        best_idx = best_rollout['rollout_idx']
+        selected_answer = parse_ground_truth(rollouts[best_idx])[1]
+        
+        # 计算所有rollout的答案（用于统计）
+        all_answers = [parse_ground_truth(r)[1] for r in rollouts]
+        
+        return selected_answer, {
+            "strategy": "highest_confidence",
+            "selected_index": best_idx,
+            "selected_confidence": best_rollout['score'],
+            "selected_confidence_details": {
+                "avg": best_rollout['avg_confidence'],
+                "min": best_rollout['min_confidence'],
+                "last": best_rollout['last_confidence'],
+                "num_tokens": best_rollout['num_tokens']
+            },
+            "all_confidence_scores": [
+                {
+                    "rollout_idx": cs['rollout_idx'],
+                    "score": cs['score'],
+                    "avg_confidence": cs['avg_confidence'],
+                    "num_tokens": cs['num_tokens']
+                }
+                for cs in confidence_scores
+            ],
+            "all_answers": all_answers
+        }
+
+
+    def _select_weighted_confidence(self, rollouts: List[str], rollouts_records: List[List[Dict]]) -> Tuple[str, Dict]:
+        """
+        基于置信度加权投票选择答案
+        
+        每个rollout对答案的投票权重等于其置信度分数
+        """
+        if not rollouts_records or len(rollouts_records) != len(rollouts):
+            print("Warning: No confidence records found, falling back to majority")
+            return self._select_majority(rollouts)
+        
+        # 计算每个rollout的答案和置信度
+        answer_confidence = {}  # 存储每个答案的累计置信度
+        answer_votes = {}  # 存储每个答案的投票次数
+        rollout_details = []
+        
+        for idx, records in enumerate(rollouts_records):
+            # 提取答案
+            answer = parse_ground_truth(rollouts[idx])[1]
+            
+            # 计算该rollout的置信度分数
+            sorted_records = sorted(records, key=lambda x: x.get('position', 0))
+            
+            token_confidences = []
+            for record in sorted_records:
+                token_id = record.get('token_id')
+                token_str = record.get('token_str', '')
+                confidence = record.get('confidence', 0.0)
+                
+                # 检查结束token
+                is_end_token = (
+                    token_id == 126081 or
+                    token_str == '<|endoftext|>' or
+                    token_str == '<|eot_id|>' or
+                    token_str == '</s>'
+                )
+                
+                if is_end_token:
+                    break
+                
+                token_confidences.append(confidence)
+            
+            # 计算rollout置信度
+            if token_confidences:
+                # 使用平均置信度作为权重
+                weight = sum(token_confidences) / len(token_confidences)
+            else:
+                weight = 0.0
+            
+            # 累加置信度权重
+            if answer not in answer_confidence:
+                answer_confidence[answer] = 0.0
+                answer_votes[answer] = 0
+            answer_confidence[answer] += weight
+            answer_votes[answer] += 1
+            
+            rollout_details.append({
+                "rollout_idx": idx,
+                "answer": answer,
+                "confidence_weight": weight,
+                "num_tokens": len(token_confidences)
+            })
+        
+        # 选择累计置信度最高的答案
+        selected_answer = max(answer_confidence, key=answer_confidence.get)
+        
+        # 计算前向分数（用于对比）
+        all_answers = [parse_ground_truth(r)[1] for r in rollouts]
+        answer_counts = Counter(all_answers)
+        forward_scores = {ans: count/len(rollouts) for ans, count in answer_counts.items()}
+        
+        return selected_answer, {
+            "strategy": "weighted_confidence",
+            "selected_answer": selected_answer,
+            "selected_confidence": answer_confidence[selected_answer],
+            "answer_confidence_scores": answer_confidence,
+            "answer_votes": answer_votes,
+            "forward_scores": forward_scores,
+            "rollout_details": rollout_details,
+            "all_answers": all_answers
+        }
+
+
+    def _select_confidence_threshold(self, rollouts: List[str], rollouts_records: List[List[Dict]], 
+                                    threshold: float = 0.9) -> Tuple[str, Dict]:
+        """
+        基于置信度阈值选择：只考虑平均置信度高于阈值的rollout，然后多数投票
+        
+        Args:
+            threshold: 置信度阈值，只考虑置信度 >= threshold 的rollout
+        """
+        if not rollouts_records or len(rollouts_records) != len(rollouts):
+            print("Warning: No confidence records found, falling back to majority")
+            return self._select_majority(rollouts)
+        
+        high_confidence_answers = []
+        rollout_filter_details = []
+        
+        for idx, records in enumerate(rollouts_records):
+            # 计算置信度
+            sorted_records = sorted(records, key=lambda x: x.get('position', 0))
+            
+            token_confidences = []
+            for record in sorted_records:
+                token_id = record.get('token_id')
+                token_str = record.get('token_str', '')
+                confidence = record.get('confidence', 0.0)
+                
+                is_end_token = (
+                    token_id == 126081 or
+                    token_str == '<|endoftext|>' or
+                    token_str == '<|eot_id|>' or
+                    token_str == '</s>'
+                )
+                
+                if is_end_token:
+                    break
+                
+                token_confidences.append(confidence)
+            
+            if token_confidences:
+                avg_confidence = sum(token_confidences) / len(token_confidences)
+            else:
+                avg_confidence = 0.0
+            
+            answer = parse_ground_truth(rollouts[idx])[1]
+            
+            rollout_filter_details.append({
+                "rollout_idx": idx,
+                "answer": answer,
+                "avg_confidence": avg_confidence,
+                "passed_threshold": avg_confidence >= threshold
+            })
+            
+            if avg_confidence >= threshold:
+                high_confidence_answers.append(answer)
+        
+        # 如果没有rollout通过阈值，回退到多数投票
+        if not high_confidence_answers:
+            print(f"Warning: No rollout meets confidence threshold {threshold}, falling back to majority")
+            return self._select_majority(rollouts)
+        
+        # 对高置信度的rollout进行多数投票
+        answer_counts = Counter(high_confidence_answers)
+        most_common = answer_counts.most_common(1)[0]
+        selected_answer = most_common[0]
+        max_count = most_common[1]
+        
+        all_answers = [parse_ground_truth(r)[1] for r in rollouts]
+        
+        return selected_answer, {
+            "strategy": "confidence_threshold",
+            "threshold": threshold,
+            "selected_answer": selected_answer,
+            "selected_count": max_count,
+            "total_high_confidence_rollouts": len(high_confidence_answers),
+            "answer_counts": dict(answer_counts),
+            "rollout_filter_details": rollout_filter_details,
+            "all_answers": all_answers
+        }
 
 def evaluate_single_sample(args_tuple):
     """
