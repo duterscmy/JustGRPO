@@ -8,7 +8,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --partition=3090
+#SBATCH --partition=a100
 
 # Create logs directory if it doesn't exist
 mkdir -p logs
@@ -21,4 +21,4 @@ mkdir -p logs
 export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
- python exp.py math500_results.json  math500_results.eval.fobar.json  --strategies fobar
+ python exp.py math500_results.json  math500_results.eval.fobar_add_template.json  --strategies fobar

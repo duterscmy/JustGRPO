@@ -57,12 +57,12 @@ class LLaDADiffusionLM:
             (predicted_text, info) 其中info包含预测的详细信息
         """
         # 1. Tokenize输入
-        # messages = [{"role": "user", "content": masked_text}]
-        # prompt = self.tokenizer.apply_chat_template(
-        #     messages, 
-        #     add_generation_prompt=True, 
-        #     tokenize=False
-        # )
+        messages = [{"role": "user", "content": masked_text}]
+        prompt = self.tokenizer.apply_chat_template(
+            messages, 
+            add_generation_prompt=True, 
+            tokenize=False
+        )
         
         # 编码
         encoded = self.tokenizer(
@@ -569,7 +569,7 @@ def main():
                         help='Path to LLaDA model for FOBAR')
     parser.add_argument('--device', type=str, default='cuda',
                         help='Device for LLaDA model')
-    parser.add_argument('--num_workers', type=int, default=None,
+    parser.add_argument('--num_workers','-n', type=int, default=None,
                         help='Number of parallel workers (default: CPU count)')
     # parser.add_argument('--sequential', action='store_true',
     #                     help='Use sequential processing instead of parallel')
