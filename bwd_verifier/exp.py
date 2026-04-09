@@ -11,6 +11,7 @@ import sys, os
 from multiprocessing import Pool, cpu_count
 from functools import partial
 from tqdm import tqdm
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.grader import math_equal
@@ -624,6 +625,7 @@ class AnswerSelector:
             "all_answers": all_answers
         }
 
+
 def evaluate_single_sample(args_tuple):
     """
     评估单个样本（用于多进程）
@@ -641,8 +643,11 @@ def evaluate_single_sample(args_tuple):
     ground_truth = sample.get(ground_truth_key, '')
     
     # 判断是否正确
+    s = time.time()
     is_correct = math_equal(selected_answer, ground_truth)
-    
+    e = time.time()
+    print(f"Math equal time: {e - s}")
+
     return {
         "sample_idx": sample_idx,  # 添加索引用于排序
         "strategy": strategy,
