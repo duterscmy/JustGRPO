@@ -145,9 +145,18 @@ class AnswerSelector:
         self.strategy = strategy
         self.diffusion_lm = diffusion_lm
         self.device = device
-    
+        self._cache = {}  # 添加缓存
+
     def select_answer(self, sample: Dict) -> Tuple[str, Dict]:
         """根据策略选择最佳答案"""
+        cache_key = (
+            sample.get('question', sample.get('prompt', '')),
+            self.strategy
+        )
+        
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        
         rollouts = sample['rollouts']
         rollouts_records = sample.get('rollouts_records', [])  # 获取置信度记录
         
