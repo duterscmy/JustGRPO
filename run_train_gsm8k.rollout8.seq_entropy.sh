@@ -19,4 +19,4 @@ mkdir -p $output_dir
 accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_gsm8k.rollout8.seq_entropy.py \
   --run_dir $output_dir \
   --block_size 1 \
-  --grad_accum 16 #>> $output_dir.log 2>&1
+  --grad_accum 16 >> $output_dir.log 2>&1
