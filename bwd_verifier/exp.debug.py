@@ -601,8 +601,8 @@ def evaluate_single_sample(args_tuple):
     num_rollouts = len(sample.get('rollouts', []))
     has_records = 'rollouts_records' in sample and sample['rollouts_records']
     
-    if sample_idx % 50 == 0:  # 每50个样本打印一次
-        print(f"🔍 Processing sample {sample_idx} (rollouts: {num_rollouts}, has_records: {has_records})")
+    # if sample_idx % 50 == 0:  # 每50个样本打印一次
+        # print(f"🔍 Processing sample {sample_idx} (rollouts: {num_rollouts}, has_records: {has_records})")
     
     # 创建选择器
     timer_start(f"create_selector_{sample_idx}")
