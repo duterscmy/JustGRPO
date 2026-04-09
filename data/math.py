@@ -40,7 +40,6 @@ def extract_answer_gsm8k(answer: str):
     """Extract the final answer from GSM8K format (after ####)."""
     return answer.split('####')[-1].strip()
 
-
 def reward_gsm8k(batch, responses, num_generations, device):
     """
     Compute reward for GSM8K responses.
@@ -67,7 +66,6 @@ def reward_gsm8k(batch, responses, num_generations, device):
             rewards[i] = -1.0
     
     return rewards
-
 
 def reward_MATH(batch, responses, num_generations, device):
     """Compute reward for MATH responses (+1 correct, -1 incorrect)."""
@@ -153,6 +151,71 @@ def reward_ttrl(batch, responses, num_generations, device):
     
     return rewards
 
+def reward_seq_entropy(batch, responses, seq_log_probs_list, num_generations, device):
+    """
+    Compute reward based on sequence log probabilities ranking.
+    
+    Args:
+        batch: Batch containing problems (NOT using ground truth answers for reward)
+        responses: Model generated responses (not used for reward, kept for compatibility)
+        seq_log_probs_list: List of sequence log probabilities corresponding to each response
+        num_generations: Number of generations per problem
+        device: Torch device
+    
+    Returns:
+        Tensor of rewards (1 for top 50%, 0 for bottom 50%)
+    """
+    import numpy as np
+    
+    num_problems = len(responses) // num_generations
+    rewards = torch.zeros(len(responses), device=device)
+    
+    for problem_idx in range(num_problems):
+        # 获取当前问题的所有生成的 seq_log_probs
+        start_idx = problem_idx * num_generations
+        end_idx = start_idx + num_generations
+        problem_seq_log_probs = seq_log_probs_list[start_idx:end_idx]
+        
+        # 获取当前问题的所有 responses（用于打印）
+        problem_responses = responses[start_idx:end_idx]
+        
+        # 打印当前问题的所有生成结果及其 seq_log_probs
+        print(f"\n========== Problem {problem_idx} ==========")
+        for i, (resp, log_prob) in enumerate(zip(problem_responses, problem_seq_log_probs)):
+            print(f"[{i}] log_prob: {log_prob:.4f}")
+        
+        # 根据 seq_log_probs 排序，获取索引
+        # 注意：seq_log_probs 越大（越接近0），表示模型越自信
+        sorted_indices = sorted(range(len(problem_seq_log_probs)), key=lambda i: problem_seq_log_probs[i], reverse=True)  # 降序排列（从高到低）
+        
+        # 计算前50%的数量
+        num_top = num_generations // 2
+        if num_generations % 2 == 1:
+            num_top = num_top + 1  # 奇数时向上取整
+        
+        # 分配奖励：前50% 奖励1，后50% 奖励0
+        top_indices = sorted_indices[:num_top]
+        bottom_indices = sorted_indices[num_top:]
+        
+        for idx in top_indices:
+            rewards[start_idx + idx] = 1.0
+        for idx in bottom_indices:
+            rewards[start_idx + idx] = 0.0
+        
+        # 打印统计信息
+        top_log_probs = [problem_seq_log_probs[idx] for idx in top_indices]
+        bottom_log_probs = [problem_seq_log_probs[idx] for idx in bottom_indices]
+        
+        print(f"\n========== Statistics for Problem {problem_idx} ==========")
+        print(f"Top {len(top_indices)} responses (reward=1): log_probs = {[f'{x:.4f}' for x in top_log_probs]}")
+        print(f"Bottom {len(bottom_indices)} responses (reward=0): log_probs = {[f'{x:.4f}' for x in bottom_log_probs]}")
+        print(f"Max log_prob: {max(problem_seq_log_probs):.4f}")
+        print(f"Min log_prob: {min(problem_seq_log_probs):.4f}")
+        print(f"Mean log_prob: {np.mean(problem_seq_log_probs):.4f}")
+        print(f"Std log_prob: {np.std(problem_seq_log_probs):.4f}")
+        print("=" * 60)
+    
+    return rewards
 
 def load_gsm8k_dataset_and_reward_justgrpo(
     local_path: str = "gsm8k",
@@ -202,6 +265,7 @@ def load_gsm8k_dataset_and_reward(
     split: str = 'train',
     num_workers: int = 4,
     seed: int = 112,
+    method: str = 'ttrl',
 ):
     """
     Load GSM8K dataset and return dataloader with reward function.
@@ -235,7 +299,11 @@ def load_gsm8k_dataset_and_reward(
         pin_memory=True,
     )
     
-    return dataloader, reward_ttrl
+    if method == 'ttrl':
+        reward_fn = reward_ttrl
+    elif method == 'seq_entropy':
+        reward_fn = reward_seq_entropy
+    return dataloader, reward_fn
 
 
 def load_math500_dataset_and_reward(
@@ -244,6 +312,7 @@ def load_math500_dataset_and_reward(
     split: str = 'test',
     num_workers: int = 4,
     seed: int = 112,
+    method: str = 'ttrl',
 ):
     """
     Load GSM8K dataset and return dataloader with reward function.
@@ -277,7 +346,11 @@ def load_math500_dataset_and_reward(
         pin_memory=True,
     )
     
-    return dataloader, reward_ttrl
+    if method == 'ttrl':
+        reward_fn = reward_ttrl
+    elif method == 'seq_entropy':
+        reward_fn = reward_seq_entropy
+    return dataloader, reward_fn
 
 def load_aime2024_dataset_and_reward(
     local_path: str = "Maxwell-Jia/AIME_2024",

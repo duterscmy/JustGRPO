@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 
-from utils.generate import generate, generate_with_confidence
+from utils.generate import generate, generate_with_confidence, generate_with_seq_log_probs
 
 
 @torch.no_grad()
@@ -42,6 +42,31 @@ def sample_with_repeat(model, batch, tokenizer, device, reward_fn=None, num_gene
         'generated_ids': all_generated_ids,
         'prompt_len': prompt_ids.shape[1],
         'rewards': reward_fn(batch, responses, num_generations*repeat_time, device).float(),
+    }
+
+
+@torch.no_grad()
+def sample_with_repeat_seq_log_probs(model, batch, tokenizer, device, reward_fn=None, num_generations=1, temperature=1., steps=256, gen_length=256, repeat_time=1, block_size=1):
+    prompts = tokenizer.apply_chat_template([[{"role": "user", "content": p}] for p in batch['problems']],
+                                            add_generation_prompt=True, tokenize=False)
+    prompt_ids = tokenizer(prompts, return_tensors='pt', padding=True)['input_ids'].to(device)
+
+    # Rollout with AR order (block_length=1)
+    generate_ids_list = []
+    seq_log_probs_list = []
+    print("=======block size:{}======".format(block_size))
+    for _ in range(repeat_time):
+        generated_ids, seq_log_probs = generate_with_seq_log_probs(model=model, prompt=prompt_ids.repeat(num_generations, 1),
+                                steps=steps, gen_length=gen_length, temperature=temperature, block_length=block_size)
+        generate_ids_list.append(generated_ids)
+        seq_log_probs_list.extend(seq_log_probs)
+
+    all_generated_ids = torch.cat(generate_ids_list, dim=0)
+    responses = tokenizer.batch_decode(all_generated_ids, skip_special_tokens=True)
+    return {
+        'generated_ids': all_generated_ids,
+        'prompt_len': prompt_ids.shape[1],
+        'rewards': reward_fn(batch, responses, seq_log_probs_list, num_generations*repeat_time, device).float(),
     }
 
 
