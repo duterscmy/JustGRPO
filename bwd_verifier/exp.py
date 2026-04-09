@@ -388,37 +388,38 @@ class AnswerSelector:
         
         for idx, records in enumerate(rollouts_records):
             # 按position排序（确保顺序正确）
-            sorted_records = sorted(records, key=lambda x: x.get('position', 0))
+            token_confidences = [record.get('confidence', 0.0) for record in records]
+            # sorted_records = sorted(records, key=lambda x: x.get('position', 0))
             
             # 收集所有token的置信度，直到遇到结束token
-            token_confidences = []
-            for record in sorted_records:
-                token_id = record.get('token_id')
-                token_str = record.get('token_str', '')
-                confidence = record.get('confidence', 0.0)
+            # token_confidences = []
+            # for record in sorted_records:
+            #     token_id = record.get('token_id')
+            #     token_str = record.get('token_str', '')
+            #     confidence = record.get('confidence', 0.0)
                 
-                # 检查是否是结束token（常见的结束token）
-                is_end_token = (
-                    token_id == 126081 or  # EOS token (根据你的设置)
-                    token_str == '<|endoftext|>' or
-                    token_str == '<|eot_id|>' or
-                    token_str == '</s>' or
-                    (hasattr(self.diffusion_lm, 'tokenizer') and 
-                    token_id == self.diffusion_lm.tokenizer.eos_token_id)
-                )
+            #     # 检查是否是结束token（常见的结束token）
+            #     is_end_token = (
+            #         token_id == 126081 or  # EOS token (根据你的设置)
+            #         token_str == '<|endoftext|>'
+            #         # token_str == '<|eot_id|>' or
+            #         # token_str == '</s>' or
+            #         # (hasattr(self.diffusion_lm, 'tokenizer') and 
+            #         # token_id == self.diffusion_lm.tokenizer.eos_token_id)
+            #     )
                 
-                if is_end_token:
-                    break  # 截断到结束token
+            #     if is_end_token:
+            #         break  # 截断到结束token
                 
-                token_confidences.append(confidence)
+            #     token_confidences.append(confidence)
             
             # 计算该rollout的综合置信度
             if token_confidences:
                 # 多种置信度计算方法
                 avg_confidence = sum(token_confidences) / len(token_confidences)
-                min_confidence = min(token_confidences)
-                prod_confidence = np.prod(token_confidences)  # 几何平均的变体
-                last_confidence = token_confidences[-1] if token_confidences else 0
+                # min_confidence = min(token_confidences)
+                # prod_confidence = np.prod(token_confidences)  # 几何平均的变体
+                # last_confidence = token_confidences[-1] if token_confidences else 0
                 
                 # 使用平均置信度作为主要指标（可根据需要调整）
                 score = avg_confidence
@@ -427,8 +428,8 @@ class AnswerSelector:
                     "rollout_idx": idx,
                     "score": score,
                     "avg_confidence": avg_confidence,
-                    "min_confidence": min_confidence,
-                    "last_confidence": last_confidence,
+                    # "min_confidence": min_confidence,
+                    # "last_confidence": last_confidence,
                     "num_tokens": len(token_confidences),
                     "token_confidences": token_confidences
                 })
@@ -457,8 +458,8 @@ class AnswerSelector:
             "selected_confidence": best_rollout['score'],
             "selected_confidence_details": {
                 "avg": best_rollout['avg_confidence'],
-                "min": best_rollout['min_confidence'],
-                "last": best_rollout['last_confidence'],
+                # "min": best_rollout['min_confidence'],
+                # "last": best_rollout['last_confidence'],
                 "num_tokens": best_rollout['num_tokens']
             },
             "all_confidence_scores": [
@@ -493,27 +494,28 @@ class AnswerSelector:
             # 提取答案
             answer = parse_ground_truth(rollouts[idx])[1]
             
-            # 计算该rollout的置信度分数
-            sorted_records = sorted(records, key=lambda x: x.get('position', 0))
+            token_confidences = [record.get('confidence', 0.0) for record in records]
+            # # 计算该rollout的置信度分数
+            # sorted_records = sorted(records, key=lambda x: x.get('position', 0))
             
-            token_confidences = []
-            for record in sorted_records:
-                token_id = record.get('token_id')
-                token_str = record.get('token_str', '')
-                confidence = record.get('confidence', 0.0)
+            # token_confidences = []
+            # for record in sorted_records:
+            #     token_id = record.get('token_id')
+            #     token_str = record.get('token_str', '')
+            #     confidence = record.get('confidence', 0.0)
                 
-                # 检查结束token
-                is_end_token = (
-                    token_id == 126081 or
-                    token_str == '<|endoftext|>' or
-                    token_str == '<|eot_id|>' or
-                    token_str == '</s>'
-                )
+            #     # 检查结束token
+            #     is_end_token = (
+            #         token_id == 126081 or
+            #         token_str == '<|endoftext|>' or
+            #         token_str == '<|eot_id|>' or
+            #         token_str == '</s>'
+            #     )
                 
-                if is_end_token:
-                    break
+            #     if is_end_token:
+            #         break
                 
-                token_confidences.append(confidence)
+            #     token_confidences.append(confidence)
             
             # 计算rollout置信度
             if token_confidences:
@@ -573,25 +575,26 @@ class AnswerSelector:
         
         for idx, records in enumerate(rollouts_records):
             # 计算置信度
-            sorted_records = sorted(records, key=lambda x: x.get('position', 0))
+            token_confidences = [record.get('confidence', 0.0) for record in records]
+            # sorted_records = sorted(records, key=lambda x: x.get('position', 0))
             
-            token_confidences = []
-            for record in sorted_records:
-                token_id = record.get('token_id')
-                token_str = record.get('token_str', '')
-                confidence = record.get('confidence', 0.0)
+            # token_confidences = []
+            # for record in sorted_records:
+            #     token_id = record.get('token_id')
+            #     token_str = record.get('token_str', '')
+            #     confidence = record.get('confidence', 0.0)
                 
-                is_end_token = (
-                    token_id == 126081 or
-                    token_str == '<|endoftext|>' or
-                    token_str == '<|eot_id|>' or
-                    token_str == '</s>'
-                )
+            #     is_end_token = (
+            #         token_id == 126081 or
+            #         token_str == '<|endoftext|>' or
+            #         token_str == '<|eot_id|>' or
+            #         token_str == '</s>'
+            #     )
                 
-                if is_end_token:
-                    break
+            #     if is_end_token:
+            #         break
                 
-                token_confidences.append(confidence)
+            #     token_confidences.append(confidence)
             
             if token_confidences:
                 avg_confidence = sum(token_confidences) / len(token_confidences)
@@ -652,10 +655,7 @@ def evaluate_single_sample(args_tuple):
     ground_truth = sample.get(ground_truth_key, '')
     
     # 判断是否正确
-    s = time.time()
     is_correct = math_equal(selected_answer, ground_truth)
-    e = time.time()
-    print(f"Math equal time: {e - s}")
 
     return {
         "sample_idx": sample_idx,  # 添加索引用于排序
