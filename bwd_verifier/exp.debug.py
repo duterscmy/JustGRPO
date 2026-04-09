@@ -175,7 +175,7 @@ class AnswerSelector:
     def _get_parsed_answer(self, rollout: str) -> str:
         """获取解析后的答案（带缓存）"""
         if rollout not in self._parsed_cache:
-            self._parsed_cache[rollout] = self._parsed_cache(rollout)
+            self._parsed_cache[rollout] = parse_ground_truth(rollout)
         return self._parsed_cache[rollout]
 
     def select_answer(self, sample: Dict) -> Tuple[str, Dict]:
