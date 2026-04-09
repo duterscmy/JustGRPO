@@ -184,57 +184,57 @@ def train(config: TrainConfig):
                     
                     accelerator.wait_for_everyone()
 
-    #                 # --- Compute Loss ---
-    #                 print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Computing loss...")
-    #                 model.train()
-    #                 for inputs in inputs_chunks:
-    #                     logprob_loss(
-    #                         model=model,
-    #                         inputs=inputs,
-    #                         valid_samples=valid_samples,
-    #                         gain=1.0,
-    #                         accelerator=accelerator,
-    #                         gen_length=config.gen_length,
-    #                     )
-    #                     all_rewards.append(inputs['rewards'].detach())
+                    # --- Compute Loss ---
+                    print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Computing loss...")
+                    model.train()
+                    for inputs in inputs_chunks:
+                        logprob_loss(
+                            model=model,
+                            inputs=inputs,
+                            valid_samples=valid_samples,
+                            gain=1.0,
+                            accelerator=accelerator,
+                            gen_length=config.gen_length,
+                        )
+                        all_rewards.append(inputs['rewards'].detach())
                 
-    #             accelerator.wait_for_everyone()
+                accelerator.wait_for_everyone()
                 
-    #             for key in list(inputs.keys()):
-    #                 del inputs[key]
+                for key in list(inputs.keys()):
+                    del inputs[key]
 
-    #     # --- Grad Clip & Optimizer Step ---
-    #     for param in model.parameters():
-    #         if param.grad is not None:
-    #             torch.nan_to_num(param.grad, nan=0, posinf=0, neginf=0, out=param.grad)
+        # --- Grad Clip & Optimizer Step ---
+        for param in model.parameters():
+            if param.grad is not None:
+                torch.nan_to_num(param.grad, nan=0, posinf=0, neginf=0, out=param.grad)
         
-    #     grad_norm = accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
-    #     if hasattr(grad_norm, "item"):
-    #         grad_norm = grad_norm.item()
+        grad_norm = accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
+        if hasattr(grad_norm, "item"):
+            grad_norm = grad_norm.item()
         
-    #     optimizer.step()
+        optimizer.step()
         
-    #     # --- Logging ---
-    #     if (step + 1) % config.log_every == 0:
-    #         all_rewards_tensor = torch.cat(all_rewards, dim=0)
-    #         gathered_rewards = accelerator.gather(all_rewards_tensor)
-    #         mean_reward = gathered_rewards.mean().item()
-    #         print(f"[Step {step+1}/{config.total_steps}] reward={mean_reward:.4f}, grad={grad_norm:.4f}")
+        # --- Logging ---
+        if (step + 1) % config.log_every == 0:
+            all_rewards_tensor = torch.cat(all_rewards, dim=0)
+            gathered_rewards = accelerator.gather(all_rewards_tensor)
+            mean_reward = gathered_rewards.mean().item()
+            print(f"[Step {step+1}/{config.total_steps}] reward={mean_reward:.4f}, grad={grad_norm:.4f}")
         
-    #     # --- Save checkpoint ---
-    #     if (step + 1) % config.save_every == 0:
-    #         state_dict = accelerator.get_state_dict(model)
-    #         save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
-    #         accelerator.save_state(save_path)
-    #         if rank == 0:
-    #             save_path = os.path.join(config.output_dir, f'ckpt-{step+1:06d}')
-    #             accelerator.unwrap_model(model).save_pretrained(
-    #                 save_path, state_dict=state_dict, safe_serialization=True
-    #             )
-    #         print(f"Saved checkpoint to {save_path}")
-    #     accelerator.wait_for_everyone()
+        # --- Save checkpoint ---
+        if (step + 1) % config.save_every == 0:
+            state_dict = accelerator.get_state_dict(model)
+            save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
+            accelerator.save_state(save_path)
+            if rank == 0:
+                save_path = os.path.join(config.output_dir, f'ckpt-{step+1:06d}')
+                accelerator.unwrap_model(model).save_pretrained(
+                    save_path, state_dict=state_dict, safe_serialization=True
+                )
+            print(f"Saved checkpoint to {save_path}")
+        accelerator.wait_for_everyone()
     
-    # print("\nTraining complete!")
+    print("\nTraining complete!")
 
 
 def parse_args():
