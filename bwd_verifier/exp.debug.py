@@ -170,6 +170,13 @@ class AnswerSelector:
             'parse_time': 0,
             'confidence_time': 0
         }
+        self._parsed_cache = {}  # 添加全局解析缓存
+    
+    def _get_parsed_answer(self, rollout: str) -> str:
+        """获取解析后的答案（带缓存）"""
+        if rollout not in self._parsed_cache:
+            self._parsed_cache[rollout] = self._parsed_cache(rollout)
+        return self._parsed_cache[rollout]
 
     def select_answer(self, sample: Dict) -> Tuple[str, Dict]:
         """根据策略选择最佳答案"""
@@ -225,20 +232,20 @@ class AnswerSelector:
     def _select_first(self, rollouts: List[str]) -> Tuple[str, Dict]:
         """直接选择第一个rollout的答案"""
         timer_start("parse_first")
-        first_answer = parse_ground_truth(rollouts[0])[1]
-        all_answers = [parse_ground_truth(r)[1] for r in rollouts]
+        first_answer = self._parsed_cache(rollouts[0])[1]
+        # all_answers = [self._parsed_cache(r)[1] for r in rollouts]
         timer_end("parse_first", threshold=0.01)
         
         return first_answer, {
             "strategy": "first",
             "selected_index": 0,
-            "all_answers": all_answers
+            # "all_answers": all_answers
         }
     
     def _select_majority(self, rollouts: List[str]) -> Tuple[str, Dict]:
         """多数投票选择答案"""
         timer_start("parse_majority")
-        answers = [parse_ground_truth(r)[1] for r in rollouts]
+        answers = [self._parsed_cache(r)[1] for r in rollouts]
         timer_end("parse_majority", threshold=0.01)
         
         timer_start("count_majority")
@@ -267,7 +274,7 @@ class AnswerSelector:
         
         # 1. 提取所有答案
         timer_start("fobar_parse")
-        answers = [parse_ground_truth(r)[1] for r in rollouts]
+        answers = [self._parsed_cache(r)[1] for r in rollouts]
         unique_answers = list(set(answers))
         timer_end("fobar_parse", threshold=0.01)
         
@@ -321,7 +328,7 @@ class AnswerSelector:
             # 找到对应的assistant response
             assistant = None
             for r in rollouts:
-                if parse_ground_truth(r)[1] == candidate:
+                if self._parsed_cache(r)[1] == candidate:
                     assistant = r
                     break
             
@@ -443,8 +450,8 @@ class AnswerSelector:
         best_idx = best_rollout['rollout_idx']
         
         timer_start("confidence_parse_answer")
-        selected_answer = parse_ground_truth(rollouts[best_idx])[1]
-        all_answers = [parse_ground_truth(r)[1] for r in rollouts]
+        selected_answer = self._parsed_cache(rollouts[best_idx])[1]
+        # all_answers = [self._parsed_cache(r)[1] for r in rollouts]
         timer_end("confidence_parse_answer", threshold=0.01)
         timer_end("confidence_select", threshold=0.01)
         
@@ -465,7 +472,7 @@ class AnswerSelector:
                 }
                 for cs in confidence_scores
             ],
-            "all_answers": all_answers
+            # "all_answers": all_answers
         }
 
     def _select_weighted_confidence(self, rollouts: List[str], rollouts_records: List[List[Dict]]) -> Tuple[str, Dict]:
@@ -481,7 +488,7 @@ class AnswerSelector:
         
         for idx, records in enumerate(rollouts_records):
             # 提取答案
-            answer = parse_ground_truth(rollouts[idx])[1]
+            answer = self._parsed_cache(rollouts[idx])[1]
             
             # 提取置信度
             token_confidences = [record.get('confidence', 0.0) for record in records]
@@ -508,7 +515,7 @@ class AnswerSelector:
         timer_start("weighted_select")
         selected_answer = max(answer_confidence, key=answer_confidence.get)
         
-        all_answers = [parse_ground_truth(r)[1] for r in rollouts]
+        all_answers = [self._parsed_cache(r)[1] for r in rollouts]
         answer_counts = Counter(all_answers)
         forward_scores = {ans: count/len(rollouts) for ans, count in answer_counts.items()}
         timer_end("weighted_select", threshold=0.01)
@@ -543,7 +550,7 @@ class AnswerSelector:
             else:
                 avg_confidence = 0.0
             
-            answer = parse_ground_truth(rollouts[idx])[1]
+            answer = self._parsed_cache(rollouts[idx])[1]
             
             rollout_filter_details.append({
                 "rollout_idx": idx,
@@ -566,7 +573,7 @@ class AnswerSelector:
         selected_answer = most_common[0]
         max_count = most_common[1]
         
-        all_answers = [parse_ground_truth(r)[1] for r in rollouts]
+        # all_answers = [self._parsed_cache(r)[1] for r in rollouts]
         timer_end("threshold_vote", threshold=0.01)
         
         return selected_answer, {
@@ -577,7 +584,7 @@ class AnswerSelector:
             "total_high_confidence_rollouts": len(high_confidence_answers),
             "answer_counts": dict(answer_counts),
             "rollout_filter_details": rollout_filter_details,
-            "all_answers": all_answers
+            # "all_answers": all_answers
         }
 
 
