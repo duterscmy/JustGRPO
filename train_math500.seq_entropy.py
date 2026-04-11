@@ -29,7 +29,7 @@ class TrainConfig:
     seed: int = 1234
     num_generations: int = 4
     repeat_times: int = 1
-    sample_repeat_times: int = 2
+    sample_repeat_times: int = 1
     gen_steps: int = 256
     gen_length: int = 256
     temperature: float = 0.6
