@@ -29,7 +29,7 @@ class TrainConfig:
     seed: int = 1234
     num_generations: int = 4
     repeat_times: int = 1
-    sample_repeat_times: int = 4
+    sample_repeat_times: int = 2
     gen_steps: int = 256
     gen_length: int = 256
     temperature: float = 0.6
@@ -182,6 +182,7 @@ def train(config: TrainConfig):
                     rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
                     advantages = compute_group_advantages_rloo(rewards, config.num_generations * config.repeat_times * config.sample_repeat_times)
                     print("advantages: {}".format(advantages))
+                    print(f"advantages std: {advantages.std():.4f}")
                     valid_samples = (advantages != 0).sum()
                     split_advantages = advantages.split(config.num_generations*config.sample_repeat_times, dim=0)
                     for chunk, adv in zip(inputs_chunks, split_advantages):

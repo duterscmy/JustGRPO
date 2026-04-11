@@ -96,7 +96,8 @@ def sample_with_repeat_rank(model, batch, tokenizer, device, reward_fn=None, num
         )
         # generated_ids shape: (num_generations * batch_size, prompt_len + gen_length)
         # ave_conf_list length: num_generations * batch_size
-        
+        avg_len = (generated_ids != 126081).sum(dim=-1).float().mean()
+        print(f"avg_gen_length: {avg_len:.1f}")
         # 将生成的序列和对应的置信度配对存储
         for i in range(len(ave_conf_list)):
             generate_ids_list.append((generated_ids[i], ave_conf_list[i]))
