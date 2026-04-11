@@ -154,66 +154,85 @@ def reward_ttrl(batch, responses, num_generations, device):
 def reward_seq_entropy(batch, responses, seq_log_probs_list, num_generations, device):
     """
     Compute reward based on sequence log probabilities ranking.
-    
-    Args:
-        batch: Batch containing problems (NOT using ground truth answers for reward)
-        responses: Model generated responses (not used for reward, kept for compatibility)
-        seq_log_probs_list: List of sequence log probabilities corresponding to each response
-        num_generations: Number of generations per problem
-        device: Torch device
-    
-    Returns:
-        Tensor of rewards (1 for top 50%, 0 for bottom 50%)
     """
     import numpy as np
+    
+    # 获取 ground truth 答案用于诊断
+    ground_truth_cot = list(batch['answers'])[0]
+    if "####" in ground_truth_cot:
+        ground_truth_answer = extract_answer_gsm8k(ground_truth_cot)
+    else:
+        ground_truth_answer = parse_ground_truth(ground_truth_cot)[1]
     
     num_problems = len(responses) // num_generations
     rewards = torch.zeros(len(responses), device=device)
     
+    # 统计
+    top_correct_total = 0
+    top_total = 0
+    bottom_correct_total = 0
+    bottom_total = 0
+    
     for problem_idx in range(num_problems):
-        # 获取当前问题的所有生成的 seq_log_probs
         start_idx = problem_idx * num_generations
         end_idx = start_idx + num_generations
         problem_seq_log_probs = seq_log_probs_list[start_idx:end_idx]
-        
-        # 获取当前问题的所有 responses（用于打印）
         problem_responses = responses[start_idx:end_idx]
         
-        # 打印当前问题的所有生成结果及其 seq_log_probs
-        print(f"\n========== Problem {problem_idx} ==========")
-        for i, (resp, log_prob) in enumerate(zip(problem_responses, problem_seq_log_probs)):
-            print(f"[{i}] log_prob: {log_prob:.4f}")
+        # 提取每个生成的答案和正确性
+        results = []  # (log_prob, is_correct)
+        for resp, log_prob in zip(problem_responses, problem_seq_log_probs):
+            ans = extract_answer(resp)
+            is_correct = (ans == ground_truth_answer)
+            results.append((log_prob, is_correct))
         
-        # 根据 seq_log_probs 排序，获取索引
-        # 注意：seq_log_probs 越大（越接近0），表示模型越自信
-        sorted_indices = sorted(range(len(problem_seq_log_probs)), key=lambda i: problem_seq_log_probs[i], reverse=True)  # 降序排列（从高到低）
+        # 按 log_prob 排序
+        results.sort(key=lambda x: x[0], reverse=True)
         
-        # 计算前50%的数量
+        # 前50% vs 后50%
         num_top = num_generations // 2
         if num_generations % 2 == 1:
-            num_top = num_top + 1  # 奇数时向上取整
+            num_top = num_top + 1
         
-        # 分配奖励：前50% 奖励1，后50% 奖励0
+        top_results = results[:num_top]
+        bottom_results = results[num_top:]
+        
+        top_correct = sum(1 for _, correct in top_results if correct)
+        bottom_correct = sum(1 for _, correct in bottom_results if correct)
+        
+        top_correct_total += top_correct
+        top_total += len(top_results)
+        bottom_correct_total += bottom_correct
+        bottom_total += len(bottom_results)
+        
+        # 分配奖励
+        sorted_indices = sorted(range(len(problem_seq_log_probs)), 
+                               key=lambda i: problem_seq_log_probs[i], reverse=True)
         top_indices = sorted_indices[:num_top]
-        bottom_indices = sorted_indices[num_top:]
         
         for idx in top_indices:
             rewards[start_idx + idx] = 1.0
-        for idx in bottom_indices:
-            rewards[start_idx + idx] = 0.0
+        # bottom 默认为 0
         
-        # 打印统计信息
-        top_log_probs = [problem_seq_log_probs[idx] for idx in top_indices]
-        bottom_log_probs = [problem_seq_log_probs[idx] for idx in bottom_indices]
-        
-        print(f"\n========== Statistics for Problem {problem_idx} ==========")
-        print(f"Top {len(top_indices)} responses (reward=1): log_probs = {[f'{x:.4f}' for x in top_log_probs]}")
-        print(f"Bottom {len(bottom_indices)} responses (reward=0): log_probs = {[f'{x:.4f}' for x in bottom_log_probs]}")
-        print(f"Max log_prob: {max(problem_seq_log_probs):.4f}")
-        print(f"Min log_prob: {min(problem_seq_log_probs):.4f}")
-        print(f"Mean log_prob: {np.mean(problem_seq_log_probs):.4f}")
-        print(f"Std log_prob: {np.std(problem_seq_log_probs):.4f}")
-        print("=" * 60)
+        # 简洁打印
+        print(f"Problem {problem_idx}: Top acc={top_correct}/{len(top_results)} ({100*top_correct/len(top_results):.0f}%) | Bottom acc={bottom_correct}/{len(bottom_results)} ({100*bottom_correct/len(bottom_results):.0f}%)")
+    
+    # 总结
+    top_acc = top_correct_total / top_total
+    bottom_acc = bottom_correct_total / bottom_total
+    
+    print(f"\n{'='*50}")
+    print(f"SUMMARY: Top half accuracy = {top_acc*100:.1f}%")
+    print(f"        Bottom half accuracy = {bottom_acc*100:.1f}%")
+    print(f"        Gap = {(top_acc - bottom_acc)*100:.1f}%")
+    
+    if top_acc <= bottom_acc:
+        print(f"⚠️  CRITICAL: Top accuracy <= Bottom accuracy! Ranking reward will hurt training.")
+    elif top_acc - bottom_acc < 0.1:
+        print(f"⚠️  WARNING: Gap is small (<10%), ranking signal is weak.")
+    else:
+        print(f"✅ Good: Top accuracy > Bottom accuracy by >10%, ranking should work.")
+    print(f"{'='*50}\n")
     
     return rewards
 
