@@ -14,14 +14,14 @@ conda activate ttrl
 t=0.6
 block=1
 lr=1e-6
-output_dir=./checkpoints_math500_num_generation16_block${block}_t${t}_lr${lr}_seq_entropy_only_rollout
+output_dir=./checkpoints_math500_num_generation8_block${block}_t${t}_lr${lr}_seq_entropy
 
 #   --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_block1_t0.6_lr1e-6/training-state-000005 \
 
 mkdir -p $output_dir
-accelerate launch --num_processes 1 --main_process_ip localhost --config_file configs/fsdp.yaml train_math500.seq_entropy.py \
+accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_math500.seq_entropy.py \
   --run_dir $output_dir \
   --temperature ${t} \
   --lr $lr \
   --block_size $block \
-  --grad_accum 1 #>> $output_dir.log 2>&1
+  --grad_accum 4 >> $output_dir.log 2>&1
