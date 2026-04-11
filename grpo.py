@@ -170,3 +170,15 @@ def compute_group_advantages(rewards, group_size):
     mean = rewards.view(group_size, -1).mean(dim=0).repeat(group_size)
     std = rewards.view(group_size, -1).std(dim=0).repeat(group_size)
     return (rewards - mean) / (std + 1e-4)
+
+
+def compute_group_advantages_rloo(rewards, group_size):
+    rewards_grouped = rewards.view(-1, group_size)  # [num_problems, group_size]
+    std = rewards_grouped.std(dim=-1, keepdim=True)  # [num_problems, 1]
+    # std为0说明组内所有reward相同，置为0跳过
+    advantages = torch.where(
+        std.expand_as(rewards_grouped) < 1e-4,
+        torch.zeros_like(rewards_grouped),
+        rewards_grouped  # RLOO已经中心化，直接用
+    )
+    return advantages.view(-1)

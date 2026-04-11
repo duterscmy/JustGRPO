@@ -151,7 +151,7 @@ def reward_ttrl(batch, responses, num_generations, device):
     
     return rewards
 
-def reward_seq_entropy(batch, responses, seq_log_probs_list, num_generations, device):
+def reward_seq_entropy_rank(batch, responses, seq_log_probs_list, num_generations, device):
     """
     Compute reward based on sequence log probabilities ranking.
     """
@@ -234,6 +234,22 @@ def reward_seq_entropy(batch, responses, seq_log_probs_list, num_generations, de
         print(f"✅ Good: Top accuracy > Bottom accuracy by >10%, ranking should work.")
     print(f"{'='*50}\n")
     
+    return rewards
+
+
+def reward_seq_entropy(batch, responses, seq_log_probs_list, num_generations, device):
+    num_problems = len(seq_log_probs_list) // num_generations
+    rewards = torch.zeros(len(seq_log_probs_list), device=device)
+    
+    for i in range(num_problems):
+        start = i * num_generations
+        end = start + num_generations
+        lp = torch.tensor(seq_log_probs_list[start:end], device=device)
+        
+        # RLOO baseline：用其他样本的均值作为baseline
+        baseline = (lp.sum() - lp) / (num_generations - 1)
+        rewards[start:end] = lp - baseline
+    print("rewards: {}".format(rewards))
     return rewards
 
 def load_gsm8k_dataset_and_reward_justgrpo(
