@@ -341,7 +341,7 @@ def generate_with_seq_log_probs(model, prompt, steps=128, gen_length=128, block_
         
         # 计算对数概率的均值（长度归一化）
         # reward = (1/T) * sum(log P(token_i | context))
-        seq_log_prob = sum(sorted_log_probs) / valid_length
+        seq_log_prob = sum(sorted_log_probs) #/ valid_length
         seq_log_probs.append(seq_log_prob)
         print("Sample {}: log_prob = {}, valid_length = {}".format(i, seq_log_prob, valid_length))
     return x, seq_log_probs

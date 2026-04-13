@@ -8,7 +8,7 @@ from typing import Optional
 
 import utils.distributed as dist
 from grpo import sample, sample_with_repeat,sample_with_repeat_seq_log_probs, \
-        logprob_loss, compute_group_advantages, compute_group_advantages_rloo
+        logprob_loss, logprob_loss_reinforce, compute_group_advantages, compute_group_advantages_rloo
 
 
 
@@ -194,7 +194,7 @@ def train(config: TrainConfig):
                     print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Computing loss...")
                     model.train()
                     for inputs in inputs_chunks:
-                        logprob_loss(
+                        logprob_loss_reinforce(
                             model=model,
                             inputs=inputs,
                             valid_samples=valid_samples,

@@ -67,6 +67,7 @@ def sample_with_repeat_seq_log_probs(model, batch, tokenizer, device, reward_fn=
         'generated_ids': all_generated_ids,
         'prompt_len': prompt_ids.shape[1],
         'rewards': reward_fn(batch, responses, seq_log_probs_list, num_generations*repeat_time, device).float(),
+        'reponses': responses,
     }
 
 
@@ -166,6 +167,30 @@ def logprob_loss(model, inputs, valid_samples, eps=0.2, gain=1.0, temperature=1.
         "valid_samples": valid_samples,
     }
 
+def logprob_loss_reinforce(model, inputs, valid_samples, gain=1.0, accelerator=None,
+                 gen_length=256, mask_id=126336, temperature=1.):
+    advantages, generated_ids, prompt_len = inputs['advantages'], inputs['generated_ids'], inputs['prompt_len']
+    batch_size, device = advantages.shape[0], generated_ids.device
+    prompt_ids, completion_ids = generated_ids[:, :prompt_len], generated_ids[:, prompt_len:]
+    
+    valid_samples = accelerator.gather(valid_samples).float().mean().item()
+    scale = gain / gen_length / (valid_samples + 1e-5)
+
+    for t in range(gen_length):
+        x = torch.cat([prompt_ids, completion_ids[:, :t],
+                       torch.full((batch_size, gen_length - t), mask_id, device=device, dtype=generated_ids.dtype)], dim=1)
+
+        with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
+            logits = model(x).logits / temperature
+
+        log_prob = F.log_softmax(logits[:, prompt_len + t, :].float(), dim=-1)
+        token_log_prob = log_prob.gather(-1, completion_ids[:, t:t+1]).squeeze(-1)
+
+        # REINFORCE：直接用log_prob * advantages，去掉ratio和clip
+        loss = -token_log_prob * advantages
+
+        accelerator.backward(loss.mul(scale).sum())
+
 
 def compute_group_advantages(rewards, group_size):
     mean = rewards.view(group_size, -1).mean(dim=0).repeat(group_size)
@@ -173,13 +198,26 @@ def compute_group_advantages(rewards, group_size):
     return (rewards - mean) / (std + 1e-4)
 
 
-def compute_group_advantages_rloo(rewards, group_size):
-    rewards_grouped = rewards.view(-1, group_size)  # [num_problems, group_size]
-    std = rewards_grouped.std(dim=-1, keepdim=True)  # [num_problems, 1]
-    # std为0说明组内所有reward相同，置为0跳过
+def compute_group_advantages_rloo_std(rewards, group_size):
+    rewards_grouped = rewards.view(-1, group_size)
+    std = rewards_grouped.std(dim=-1, keepdim=True)
+    
     advantages = torch.where(
         std.expand_as(rewards_grouped) < 1e-4,
         torch.zeros_like(rewards_grouped),
-        rewards_grouped  # RLOO已经中心化，直接用
+        rewards_grouped / (std.expand_as(rewards_grouped) + 1e-4)  # 加除以std
+    )
+    return advantages.view(-1)
+
+
+def compute_group_advantages_rloo(rewards, group_size):
+    rewards_grouped = rewards.view(-1, group_size)
+    std = rewards_grouped.std(dim=-1, keepdim=True)
+    
+    # 只做std=0的过滤，不除以std
+    advantages = torch.where(
+        std.expand_as(rewards_grouped) < 1e-4,
+        torch.zeros_like(rewards_grouped),
+        rewards_grouped  # 直接用，RLOO已经在reward_seq_entropy里做了
     )
     return advantages.view(-1)
