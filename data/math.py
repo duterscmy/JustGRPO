@@ -249,7 +249,15 @@ def reward_seq_entropy(batch, responses, seq_log_probs_list, num_generations, de
         # RLOO baseline：用其他样本的均值作为baseline
         baseline = (lp.sum() - lp) / (num_generations - 1)
         rewards[start:end] = lp - baseline
+        raw_log_probs = lp.mean().item()  # RLOO之前的均值
+        print(f"raw_log_prob mean: {raw_log_probs:.4f}")
     print("rewards: {}".format(rewards))
+
+    ground_truth_cot = list(batch['answers'])[0]
+    if "####" in ground_truth_cot:
+        answer = extract_answer_gsm8k(ground_truth_cot)
+    else:
+        answer = parse_ground_truth(ground_truth_cot)[1]
     return rewards
 
 def load_gsm8k_dataset_and_reward_justgrpo(
@@ -365,7 +373,7 @@ def load_math500_dataset_and_reward(
     ds = load_dataset(local_path, "default", split=split)
     ds = ds.with_format('torch')
     ds = ds.shuffle(seed=seed)
-    
+    ds = ds.filter(lambda x: x['level'] <= 3)  # 只训练难度1-3的题目
     sampler = InfiniteSampler(
         ds, 
         rank=get_rank(), 

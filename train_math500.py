@@ -21,14 +21,14 @@ class TrainConfig:
     # --- Training ---
     batch_size_per_device: int = 1
     grad_accumulation: int = 8
-    total_steps: int = 25
+    total_steps: int = 5
     learning_rate: float = 1e-6
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
     seed: int = 1234
     num_generations: int = 4
     repeat_times: int = 1
-    sample_repeat_times: int = 4
+    sample_repeat_times: int = 2
     gen_steps: int = 256
     gen_length: int = 256
     temperature: float = 0.6
