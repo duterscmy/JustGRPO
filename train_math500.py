@@ -33,6 +33,7 @@ class TrainConfig:
     gen_length: int = 256
     temperature: float = 0.6
     block_size: int = 1
+    max_level: int = 3
 
     # --- Misc ---
     output_dir: str = "./checkpoints_math500_num_generation{}".format(num_generations)
@@ -97,6 +98,7 @@ def train(config: TrainConfig):
         split='test',
         batch_size=config.batch_size_per_device,
         num_workers=4,
+        max_level=config.max_level,
     )
     
     # --- Optimizer ---
@@ -256,6 +258,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=5e-6,  help="lr")
     parser.add_argument("--block_size", type=int, default=1, help="Generate Block Size")
     parser.add_argument("--only_rollout", type=int, default=0)
+    parser.add_argument("--max_level", type=int, default=3, help="Maximum difficulty level to train on")
     
     return parser.parse_args()
 

@@ -356,6 +356,7 @@ def load_math500_dataset_and_reward(
     num_workers: int = 4,
     seed: int = 112,
     method: str = 'ttrl',
+    max_level: int = 3,
 ):
     """
     Load GSM8K dataset and return dataloader with reward function.
@@ -373,7 +374,7 @@ def load_math500_dataset_and_reward(
     ds = load_dataset(local_path, "default", split=split)
     ds = ds.with_format('torch')
     ds = ds.shuffle(seed=seed)
-    ds = ds.filter(lambda x: x['level'] <= 3)  # 只训练难度1-3的题目
+    ds = ds.filter(lambda x: x['level'] <= max_level)  # 只训练难度1-3的题目
     sampler = InfiniteSampler(
         ds, 
         rank=get_rank(), 
