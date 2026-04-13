@@ -198,7 +198,7 @@ def compute_group_advantages(rewards, group_size):
     return (rewards - mean) / (std + 1e-4)
 
 
-def compute_group_advantages_rloo_std(rewards, group_size):
+def compute_group_advantages_rloo(rewards, group_size):
     rewards_grouped = rewards.view(-1, group_size)
     std = rewards_grouped.std(dim=-1, keepdim=True)
     
@@ -210,7 +210,7 @@ def compute_group_advantages_rloo_std(rewards, group_size):
     return advantages.view(-1)
 
 
-def compute_group_advantages_rloo(rewards, group_size):
+def compute_group_advantages_rloo_no_std(rewards, group_size):
     rewards_grouped = rewards.view(-1, group_size)
     std = rewards_grouped.std(dim=-1, keepdim=True)
     
