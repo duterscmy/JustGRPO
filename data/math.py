@@ -375,6 +375,7 @@ def load_math500_dataset_and_reward(
     ds = ds.with_format('torch')
     ds = ds.shuffle(seed=seed)
     ds = ds.filter(lambda x: x['level'] <= max_level)  # 只训练难度1-3的题目
+    print(f"Filtered MATH-500 dataset to max_level={max_level}, resulting in {len(ds)} samples.")
     sampler = InfiniteSampler(
         ds, 
         rank=get_rank(), 
