@@ -199,25 +199,18 @@ def compute_group_advantages(rewards, group_size):
 
 
 def compute_group_advantages_rloo(rewards, group_size):
-    rewards_grouped = rewards.view(-1, group_size)
-    std = rewards_grouped.std(dim=-1, keepdim=True)
+    rewards_grouped = rewards.view(-1, group_size)  # [num_problems, group_size]
     
-    advantages = torch.where(
-        std.expand_as(rewards_grouped) < 1e-4,
-        torch.zeros_like(rewards_grouped),
-        rewards_grouped / (std.expand_as(rewards_grouped) + 1e-4)  # 加除以std
-    )
-    return advantages.view(-1)
-
-
-def compute_group_advantages_rloo_no_std(rewards, group_size):
-    rewards_grouped = rewards.view(-1, group_size)
-    std = rewards_grouped.std(dim=-1, keepdim=True)
+    # RLOO baseline：每个样本的baseline是其他样本的均值
+    rloo_baseline = (rewards_grouped.sum(dim=-1, keepdim=True) - rewards_grouped) / (group_size - 1)
+    advantages_grouped = rewards_grouped - rloo_baseline
     
-    # 只做std=0的过滤，不除以std
-    advantages = torch.where(
-        std.expand_as(rewards_grouped) < 1e-4,
-        torch.zeros_like(rewards_grouped),
-        rewards_grouped  # 直接用，RLOO已经在reward_seq_entropy里做了
+    # std过滤：组内所有reward相同则跳过
+    std = rewards_grouped.std(dim=-1, keepdim=True)
+    advantages_grouped = torch.where(
+        std.expand_as(advantages_grouped) < 1e-4,
+        torch.zeros_like(advantages_grouped),
+        advantages_grouped / (std.expand_as(advantages_grouped) + 1e-4)  # 除以std稳定量级
     )
-    return advantages.view(-1)
+    
+    return advantages_grouped.view(-1)

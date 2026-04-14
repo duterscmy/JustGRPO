@@ -245,19 +245,11 @@ def reward_seq_entropy(batch, responses, seq_log_probs_list, num_generations, de
         start = i * num_generations
         end = start + num_generations
         lp = torch.tensor(seq_log_probs_list[start:end], device=device)
-        
-        # RLOO baseline：用其他样本的均值作为baseline
-        baseline = (lp.sum() - lp) / (num_generations - 1)
-        rewards[start:end] = lp - baseline
-        raw_log_probs = lp.mean().item()  # RLOO之前的均值
+        rewards[start:end] = lp  # 直接存原始log_prob，不做RLOO
+        raw_log_probs = lp.mean().item()
         print(f"raw_log_prob mean: {raw_log_probs:.4f}")
+    
     print("rewards: {}".format(rewards))
-
-    ground_truth_cot = list(batch['answers'])[0]
-    if "####" in ground_truth_cot:
-        answer = extract_answer_gsm8k(ground_truth_cot)
-    else:
-        answer = parse_ground_truth(ground_truth_cot)[1]
     return rewards
 
 def load_gsm8k_dataset_and_reward_justgrpo(
