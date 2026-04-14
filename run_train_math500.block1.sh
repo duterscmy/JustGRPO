@@ -14,7 +14,7 @@ conda activate ttrl
 t=0.6
 block=1
 lr=1e-6
-max_level=2
+max_level=3
 output_dir=./checkpoints_math500_num_generation8_block${block}_t${t}_lr${lr}_only_level1_${max_level}
 
 #   --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_block1_t0.6_lr1e-6/training-state-000005 \
@@ -26,4 +26,5 @@ accelerate launch --num_processes 4 --main_process_ip localhost --config_file co
   --lr $lr \
   --block_size $block \
   --max_level $max_level \
+  --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_block1_t0.6_lr1e-6_only_level1_3/training-state-000005 \
   --grad_accum 8 >> $output_dir.log 2>&1
