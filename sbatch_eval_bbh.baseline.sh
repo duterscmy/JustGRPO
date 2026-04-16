@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name="soar_eval"
+#SBATCH --job-name="eval_bbh"
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:4               # 请求2块GPU
@@ -17,6 +17,7 @@ export CUDA_VISIBLE_DEVICES=0
 #  --limit 256
 length=256
 block=32
+temperature=0.0
 accelerate launch --num_processes 4 eval_llada.py \
   --tasks bbh_cot_zeroshot \
   --model llada_dist \
