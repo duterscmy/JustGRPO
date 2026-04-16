@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name="eval_arc"
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=2
-#SBATCH --gres=gpu:2              # 请求2块GPU
+#SBATCH --ntasks-per-node=1
+#SBATCH --gres=gpu:1              # 请求2块GPU
 #SBATCH --time=24:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
@@ -15,10 +15,10 @@ export HF_ENDPOINT=https://hf-mirror.com
 export HF_DATASETS_OFFLINE=0
 export CUDA_VISIBLE_DEVICES=0
 #  --limit 256
-length=256
-block=32
-temperature=1.0
-accelerate launch --num_processes 2 eval_llada.py \
+length=128
+block=16
+temperature=0.0
+accelerate launch --num_processes 1 eval_llada.py \
   --tasks arc_cot_zeroshot \
   --model llada_dist \
   --num_fewshot 0 \
