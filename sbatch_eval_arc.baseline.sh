@@ -10,10 +10,10 @@
 ### 激活conda环境
 source ~/.bashrc # 你的环境名
 conda activate soar
-python -c "import lm_eval; print(lm_eval.__file__)" &>> logs/debug.log
+python -c "import lm_eval; print(lm_eval.__file__)" &>> logs/debug_before.log
 cd /lus/lfs1aip2/projects/public/u6er/mingyu/lm-evaluation-harness
 pip install -e . --quiet
-python -c "import lm_eval; print(lm_eval.__file__)" &>> logs/debug.log
+python -c "import lm_eval; print(lm_eval.__file__)" &>> logs/debug_after.log
 cd /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO
 
 export HF_ENDPOINT=https://hf-mirror.com
