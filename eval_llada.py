@@ -118,7 +118,7 @@ class LLaDAEvalHarness(LM):
         self.early_threshold = float(kwargs.pop('early_threshold', 7.5))
         self.mid_threshold = float(kwargs.pop('mid_threshold', 5.0))
         self.late_threshold = float(kwargs.pop('late_threshold', 2.5))
-        self.add_chat_template = self._as_bool(kwargs.pop('add_chat_template', False))
+        self.apply_chat_template = self._as_bool(kwargs.pop('apply_chat_template', False))
 
     def _as_bool(self, v, default=False):
         if isinstance(v, bool):
@@ -276,7 +276,7 @@ class LLaDAEvalHarness(LM):
             question_text = e["question"]
             
             # 应用 chat template（如果 tokenizer 支持）
-            if self.add_chat_template:
+            if self.apply_chat_template:
                 messages = [{"role": "user", "content": question_text}]
                 prompt_text = self.tokenizer.apply_chat_template(
                     messages, 
