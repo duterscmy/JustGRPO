@@ -17,7 +17,7 @@ export CUDA_VISIBLE_DEVICES=0
 #  --limit 256
 length=256
 block=32
-temperature=0.0
+temperature=1.0
 accelerate launch --num_processes 2 eval_llada.py \
   --tasks arc_cot_zeroshot \
   --model llada_dist \
