@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name="soar_eval"
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:1                # 请求2块GPU
+#SBATCH --ntasks-per-node=4
+#SBATCH --gres=gpu:4               # 请求2块GPU
 #SBATCH --time=24:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
@@ -17,7 +17,7 @@ export CUDA_VISIBLE_DEVICES=0
 #  --limit 256
 length=256
 block=32
-accelerate launch eval_llada.py \
+accelerate launch --num_processes 4 eval_llada.py \
   --tasks mmlu_flan_cot_zeroshot \
   --model llada_dist \
   --num_fewshot 0 \
