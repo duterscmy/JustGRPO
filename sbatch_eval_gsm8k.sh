@@ -47,7 +47,7 @@ target_dir="eval_results/${parent_dir}"
 mkdir -p "$target_dir"
 
 # 4. 拼接最终的日志路径
-log_path="${target_dir}/${base_name}.log"
+log_path="${target_dir}/${base_name}.gsm8k.log"
 
 echo "Logging to: $log_path"
 
