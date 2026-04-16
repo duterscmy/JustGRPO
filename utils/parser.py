@@ -462,8 +462,6 @@ def extract_answer(pred_str, use_last_number=True):
     return pred
 
 
-
-
 def extract_boxed_answer(pred_str, use_last_number=True):
     pred_str = pred_str.replace("\u043a\u0438", "")
 
@@ -509,6 +507,31 @@ def extract_boxed_answer(pred_str, use_last_number=True):
     pred = strip_string(pred, skip_unit=False)
     return pred
 
+import re
+
+def extract_arc_answer(pred_str):
+    """
+    从模型的输出中提取 ARC 选择题答案 (A/B/C/D)
+    
+    参考格式: "So the answer is (C)."
+    
+    Args:
+        pred_str: 模型的输出字符串
+    
+    Returns:
+        提取的答案字母 (A/B/C/D)，如果未找到返回 None
+    """
+    if not pred_str or not isinstance(pred_str, str):
+        return None
+    
+    # 匹配 "the answer is (X)" 格式，找最后一个
+    pattern = r'[Tt]he\s+answer\s+is\s+\(([A-Z])\)'
+    matches = re.findall(pattern, pred_str)
+    
+    if matches:
+        return matches[-1]  # 返回最后一个匹配
+    
+    return "None"
 
 STRIP_EXCEPTIONS = ["carp_en", "minerva_math"]
 

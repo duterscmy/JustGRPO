@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from utils.distributed import get_rank, get_world_size
 from data.sampler import InfiniteSampler
 from utils.grader import math_equal
-from utils.parser import extract_answer, parse_ground_truth
+from utils.parser import extract_answer, parse_ground_truth, extract_arc_answer
 
 
 def collate_fn_gsm8k(batch):
@@ -35,6 +35,25 @@ def collate_fn_aime2024(batch):
     answers = [item['Solution'] for item in batch]
     return {"problems": problems, "answers": answers}
 
+def collate_fn_arc(batch):
+    """Collate function for ARC dataset."""
+    problems = []
+    for item in batch:
+        question = item['question'].strip()
+        choices = item['choices']
+        choice_texts = choices['text']
+        
+        # 构建 prompt 模板
+        prompt = f"Q: {question}\n(A) {choice_texts[0]} (B) {choice_texts[1]} (C) {choice_texts[2]}"
+        
+        # 如果有第4个选项（D）
+        if len(choice_texts) > 3:
+            prompt += f" (D) {choice_texts[3]}"
+        
+        prompt += "\nA: Let's think step by step."
+        problems.append(prompt)
+    answers = [item['answer'] for item in batch]
+    return {"problems": problems, "answers": answers}
 
 def extract_answer_gsm8k(answer: str):
     """Extract the final answer from GSM8K format (after ####)."""
@@ -266,6 +285,73 @@ def reward_ttrl(batch, responses, num_generations, device):
     return rewards
 
 
+def reward_ttrl_arc(batch, responses, num_generations, device):
+    """
+    Compute reward for ARC responses using TTRL's majority voting method.
+    
+    Args:
+        batch: Batch containing problems (but NOT using ground truth answers for reward)
+        responses: Model generated responses
+        num_generations: Number of generations per problem
+        device: Torch device
+    
+    Returns:
+        Tensor of rewards (+1 for matching majority vote, -1 for not matching)
+    """
+    from collections import Counter
+    
+    answer = list(batch['answers'])[0]
+    print("======correct answer: {}======".format(answer))
+
+    num_problems = len(responses) // num_generations
+    rewards = torch.zeros(len(responses), device=device)
+    
+    for problem_idx in range(num_problems):
+        # 获取当前问题的所有生成结果
+        start_idx = problem_idx * num_generations
+        end_idx = start_idx + num_generations
+        problem_responses = responses[start_idx:end_idx]
+        
+        # 提取所有答案
+        print("============ROLLOUT==========")
+        extracted_answers = []
+        for resp in problem_responses:
+            ans = extract_arc_answer(resp)
+            extracted_answers.append(ans)
+            print(resp)
+            print(ans)
+            print("==================")
+        
+        # 多数投票：找出出现频率最高的答案作为伪标签
+        if extracted_answers:
+            counter = Counter(extracted_answers)
+            majority_answer = counter.most_common(1)[0][0]
+            print("==========MAJORITY: {}===========".format(majority_answer))
+
+            # 计算多样性统计
+            distinct_answer_num = len(counter)
+            all_answer_num = len(extracted_answers)
+            distinct_answer_ratio = distinct_answer_num / all_answer_num
+            best_answer_ratio = counter[majority_answer] / all_answer_num
+            
+            # 计算正确答案数量
+            correct_answer_number = sum(1 for ans in extracted_answers if ans == answer)
+            
+            # 判断最佳答案是否等于正确答案
+            best_is_correct = 1 if majority_answer == answer else 0
+            
+            # 输出多样性统计和正确答案数量（特定格式）
+            print(f"diversity| distinct_answer_num: {distinct_answer_num} | all_answer_num: {all_answer_num} | distinct_answer_ratio: {distinct_answer_ratio:.2f} | best_answer_ratio: {best_answer_ratio:.2f} | correct_answer_number: {correct_answer_number} | best_is_correct: {best_is_correct} | extracted_answers: {extracted_answers} | majority_answer: {majority_answer} | ground_truth_answer: {answer}", flush=True)
+
+            # 根据是否匹配多数投票结果分配奖励
+            for i, ans in enumerate(extracted_answers):
+                if ans == majority_answer:
+                    rewards[start_idx + i] = 1.0  # 匹配多数投票结果
+                # else:
+                #     rewards[start_idx + i] = -1.0  # 不匹配多数投票结果
+    
+    return rewards
+
 def reward_seq_entropy_rank(batch, responses, seq_log_probs_list, num_generations, device):
     """
     Compute reward based on sequence log probabilities ranking.
@@ -350,7 +436,6 @@ def reward_seq_entropy_rank(batch, responses, seq_log_probs_list, num_generation
     print(f"{'='*50}\n")
     
     return rewards
-
 
 def reward_seq_entropy(batch, responses, seq_log_probs_list, num_generations, device):
     num_problems = len(seq_log_probs_list) // num_generations
@@ -544,3 +629,49 @@ def load_aime2024_dataset_and_reward(
     )
     
     return dataloader, reward_gsm8k_ttrl
+
+def load_arc_dataset_and_reward(
+    local_path: str = "arc",
+    batch_size: int = 1,
+    split: str = 'test',
+    num_workers: int = 4,
+    seed: int = 112,
+    method: str = 'ttrl',
+):
+    """
+    Load GSM8K dataset and return dataloader with reward function.
+    
+    Args:
+        local_path: HuggingFace dataset path
+        batch_size: Batch size per GPU
+        split: Dataset split to use
+        num_workers: Number of dataloader workers
+        seed: Random seed for shuffling
+    
+    Returns:
+        Tuple of (dataloader, reward_function)
+    """
+    ds = load_dataset("allenai/ai2_arc", "ARC-Challenge", split=split)
+    ds = ds.with_format('torch')
+    ds = ds.shuffle(seed=seed)
+    
+    sampler = InfiniteSampler(
+        ds, 
+        rank=get_rank(), 
+        num_replicas=get_world_size(),
+    )
+    
+    dataloader = DataLoader(
+        ds,
+        collate_fn=collate_fn_arc,
+        batch_size=batch_size,
+        sampler=sampler,
+        num_workers=num_workers,
+        pin_memory=True,
+    )
+    
+    if method == 'ttrl':
+        reward_fn = reward_ttrl
+    elif method == 'seq_entropy':
+        reward_fn = reward_seq_entropy
+    return dataloader, reward_fn
