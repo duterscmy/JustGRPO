@@ -73,7 +73,7 @@ class LLaDAEvalHarness(LM):
             self.accelerator = accelerator
         else:
             self.accelerator = None
-        
+
         model_kwargs = {}
         if self.accelerator is not None:
             model_kwargs.update({'device_map': {'': f'{self.accelerator.device}'}})
@@ -87,8 +87,10 @@ class LLaDAEvalHarness(LM):
             self.device = torch.device(f'{self.accelerator.device}')
             self._rank = self.accelerator.local_process_index
             self._world_size = self.accelerator.num_processes
-        else: 
+        else:
             self.model = self.model.to(device)
+            self._rank = 0
+            self._world_size = 1
 
         self.mask_id = mask_id
         self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
@@ -104,9 +106,9 @@ class LLaDAEvalHarness(LM):
         self.steps = steps
         self.gen_length = gen_length
         self.block_length = block_length
-        self.remasking = remasking  
-        self.temperature = temperature  
-        
+        self.remasking = remasking
+        self.temperature = temperature
+
         # Early exit and constraint args
         self.constraints_text = kwargs.pop('constraints_text', '')
         self.answer_length = int(kwargs.pop('answer_length', 5))
@@ -116,7 +118,7 @@ class LLaDAEvalHarness(LM):
         self.early_threshold = float(kwargs.pop('early_threshold', 7.5))
         self.mid_threshold = float(kwargs.pop('mid_threshold', 5.0))
         self.late_threshold = float(kwargs.pop('late_threshold', 2.5))
-        
+
     def _as_bool(self, v, default=False):
         if isinstance(v, bool):
             return v
@@ -124,11 +126,11 @@ class LLaDAEvalHarness(LM):
             return default
         s = str(v).strip().strip("'\"").lower()
         return s in ("1", "true", "yes", "y", "t")
-    
+
     @property
     def rank(self):
         return self._rank
-    
+
     @property
     def world_size(self):
         return self._world_size
@@ -231,23 +233,36 @@ class LLaDAEvalHarness(LM):
                 "target": target,
             }
 
-        ds = []
         ds = [{"prefix": req.args[0], "target": req.args[1]} for req in requests]
         ds = Dataset.from_list(ds)
         ds = ds.map(_tokenize)
+
+        # ── Multi-GPU: each rank processes its own shard ──────────────────────
+        if self.accelerator is not None:
+            ds = ds.shard(num_shards=self.world_size, index=self.rank)
+
         ds = ds.with_format("torch")
         prompt_len = [len(x["prefix"]) + len(x["target"]) for x in ds]
-
         assert max(prompt_len) <= 4096
 
         out = []
         with torch.no_grad():
-            for elem in tqdm(ds, desc="Computing likelihood..."):
+            for elem in tqdm(ds, desc=f"[rank {self.rank}] Computing likelihood..."):
                 prefix = elem["prefix"]
                 target = elem["target"]
                 ll = self.get_loglikelihood(prefix, target)
                 is_target_greedy_dec = self.suffix_greedy_prediction(prefix, target)
                 out.append((ll, 1.0 if is_target_greedy_dec else 0.0))
+
+        # ── Gather results from all ranks ─────────────────────────────────────
+        if self.accelerator is not None:
+            # Convert to tensors for gather
+            ll_tensor = torch.tensor([x[0] for x in out], device=self.device)
+            greedy_tensor = torch.tensor([x[1] for x in out], device=self.device)
+            ll_all = self.accelerator.gather(ll_tensor).cpu().tolist()
+            greedy_all = self.accelerator.gather(greedy_tensor).cpu().tolist()
+            out = list(zip(ll_all, greedy_all))
+
         torch.cuda.empty_cache()
         return out
 
@@ -265,22 +280,27 @@ class LLaDAEvalHarness(LM):
         ds = [{"question": req.args[0], "until": req.args[1]['until']} for req in requests]
         ds = Dataset.from_list(ds)
         ds = ds.map(_tokenize)
+
+        # ── Multi-GPU: each rank processes its own shard ──────────────────────
+        if self.accelerator is not None:
+            ds = ds.shard(num_shards=self.world_size, index=self.rank)
+
         ds = ds.with_format("torch")
 
         out = []
-        for elem in tqdm(ds, desc="Generating..."):
+        for elem in tqdm(ds, desc=f"[rank {self.rank}] Generating..."):
             prompt = elem["question"].unsqueeze(0).to(self.device)
             stop_tokens = elem["until"]
- 
+
             # Prepare constraints if provided
             constraints = _parse_constraints(self.constraints_text, self.tokenizer) if self.constraints_text else None
-            
+
             # Determine answer start position for early exit
             answer_start_pos = None
             if self.enable_early_exit and constraints:
                 answer_start = max(constraints.keys()) + 2 if constraints else 0
                 answer_start_pos = prompt.shape[1] + answer_start
- 
+
             # Generate with or without early exit
             if self.enable_early_exit:
                 if self.enable_soar:
@@ -306,8 +326,8 @@ class LLaDAEvalHarness(LM):
                         }
                     )
                 else:
-                   from generate_earlyexit import generate
-                   generated_out, tmp = generate(
+                    from generate_earlyexit import generate
+                    generated_out, tmp = generate(
                         self.model,
                         prompt,
                         steps=self.steps,
@@ -326,7 +346,7 @@ class LLaDAEvalHarness(LM):
                             'mid': self.mid_threshold,
                             'late': self.late_threshold
                         }
-                    ) 
+                    )
             else:
                 if self.enable_soar:
                     from generate_soar import generate
@@ -340,9 +360,8 @@ class LLaDAEvalHarness(LM):
                         cfg_scale=self.cfg,
                         remasking=self.remasking,
                         mask_id=self.mask_id,
-                        # constraints=constraints,
                     )
-                else:   
+                else:
                     from generate import generate as generate_baseline
                     generated_out = generate_baseline(
                         self.model,
@@ -356,25 +375,40 @@ class LLaDAEvalHarness(LM):
                         mask_id=self.mask_id,
                         constraints=constraints,
                     )
- 
+
             generated_answer = self.tokenizer.decode(generated_out[0][prompt.shape[1]:], skip_special_tokens=False)
             for stop_seq in stop_tokens:
-                    if stop_seq in generated_answer:
-                        generated_answer = generated_answer.split(stop_seq)[0]
+                if stop_seq in generated_answer:
+                    generated_answer = generated_answer.split(stop_seq)[0]
 
             # Remove special tokens
             generated_answer_ids = self.tokenizer(generated_answer)["input_ids"]
             generated_answer = self.tokenizer.decode(generated_answer_ids, skip_special_tokens=True)
             out.append(generated_answer)
 
-            # Log input & output
-            if not hasattr(self, '_rank') or self.rank == 0:
+            # Log input & output (only rank 0)
+            if self.rank == 0:
                 question_text = elem.get("question_text", "<N/A>")
                 print(f"[LOG][Prompt] {question_text}")
                 print(f"[LOG][Answer] {generated_answer}\n")
 
             if self.accelerator is not None:
                 self.accelerator.wait_for_everyone()
+
+        # ── Gather string outputs from all ranks ──────────────────────────────
+        if self.accelerator is not None:
+            # gather_object works for non-tensor data like strings
+            all_out = [None] * self.world_size
+            torch.distributed.all_gather_object(all_out, out)
+            # Flatten: interleave results to preserve original dataset order
+            # Each rank processed shard i, so we need to reconstruct original order
+            merged = []
+            max_len = max(len(x) for x in all_out)
+            for i in range(max_len):
+                for rank_out in all_out:
+                    if i < len(rank_out):
+                        merged.append(rank_out[i])
+            out = merged
 
         return out
 
