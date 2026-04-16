@@ -118,6 +118,7 @@ class LLaDAEvalHarness(LM):
         self.early_threshold = float(kwargs.pop('early_threshold', 7.5))
         self.mid_threshold = float(kwargs.pop('mid_threshold', 5.0))
         self.late_threshold = float(kwargs.pop('late_threshold', 2.5))
+        self.add_chat_template = self._as_bool(kwargs.pop('add_chat_template', False))
 
     def _as_bool(self, v, default=False):
         if isinstance(v, bool):
@@ -271,9 +272,24 @@ class LLaDAEvalHarness(LM):
 
     def generate_until(self, requests: list[Instance]):
         def _tokenize(e):
+            # 获取原始问题文本
+            question_text = e["question"]
+            
+            # 应用 chat template（如果 tokenizer 支持）
+            if self.add_chat_template:
+                messages = [{"role": "user", "content": question_text}]
+                prompt_text = self.tokenizer.apply_chat_template(
+                    messages, 
+                    tokenize=False, 
+                    add_generation_prompt=True
+                )
+            else:
+                prompt_text = question_text
+            
             return {
-                "question": self.tokenizer(e["question"])["input_ids"],
-                "question_text": e["question"],
+                "question": self.tokenizer(prompt_text)["input_ids"],
+                "question_text": question_text,  # 保留原始问题用于日志
+                "prompt_text": prompt_text,      # 保存模板化后的 prompt 用于日志
                 "until": e["until"],
             }
 
