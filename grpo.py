@@ -23,9 +23,13 @@ def sample(model, batch, tokenizer, device, reward_fn=None, num_generations=1, t
 
 
 @torch.no_grad()
-def sample_with_repeat(model, batch, tokenizer, device, reward_fn=None, num_generations=1, temperature=1., steps=256, gen_length=256, repeat_time=1, block_size=1):
-    prompts = tokenizer.apply_chat_template([[{"role": "user", "content": p}] for p in batch['problems']],
-                                            add_generation_prompt=True, tokenize=False)
+def sample_with_repeat(model, batch, tokenizer, device, reward_fn=None, num_generations=1, temperature=1., steps=256, gen_length=256, 
+                       repeat_time=1, block_size=1, apply_chat_template=True):
+    if apply_chat_template:
+        prompts = tokenizer.apply_chat_template([[{"role": "user", "content": p}] for p in batch['problems']],
+                                                add_generation_prompt=True, tokenize=False)
+    else:
+        prompts = batch['problems']
     prompt_ids = tokenizer(prompts, return_tensors='pt', padding=True)['input_ids'].to(device)
 
     # Rollout with AR order (block_length=1)

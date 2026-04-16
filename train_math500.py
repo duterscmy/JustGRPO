@@ -197,6 +197,7 @@ def train(config: TrainConfig):
                             inputs=inputs,
                             valid_samples=valid_samples,
                             gain=1.0,
+                            temperature=config.temperature,
                             accelerator=accelerator,
                             gen_length=config.gen_length,
                         )

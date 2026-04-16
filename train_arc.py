@@ -31,6 +31,7 @@ class TrainConfig:
     sample_repeat_times: int = 1
     gen_steps: int = 64
     gen_length: int = 64
+    temperature: float = 0.6
     block_size: int = 8
 
     # --- Misc ---
@@ -166,7 +167,9 @@ def train(config: TrainConfig):
                             steps=config.gen_steps,
                             gen_length=config.gen_length,
                             repeat_time=config.sample_repeat_times,
-                            block_size=config.block_size
+                            block_size=config.block_size,
+                            add_chat_template=False,
+                            temperature=config.temperature,
                         )
                         inputs_chunks.append(inputs)
                         torch.cuda.empty_cache()
@@ -194,6 +197,7 @@ def train(config: TrainConfig):
                             gain=1.0,
                             accelerator=accelerator,
                             gen_length=config.gen_length,
+                            temperature=config.temperature,
                         )
                         all_rewards.append(inputs['rewards'].detach())
                 
@@ -243,6 +247,7 @@ def parse_args():
     parser.add_argument("--grad_accum", type=int, default=8, help="Gradient accumulation steps")
     parser.add_argument("--resume_ckpt", type=str, default=None, help="Resume checkpoint path")
     parser.add_argument("--block_size", type=int, default=1, help="Generate Block Size")
+    parser.add_argument("--temperature", type=float, default=1.0,  help="rollout temperature")
     
     return parser.parse_args()
 
@@ -256,6 +261,8 @@ if __name__ == "__main__":
         grad_accumulation=args.grad_accum,
         resume_ckpt=args.resume_ckpt,
         block_size=args.block_size,
+        temperature= args.temperature,
     )
+    
 
     train(config)

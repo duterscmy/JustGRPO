@@ -14,9 +14,10 @@ conda activate ttrl
 output_dir=./checkpoints_arc_num_generation8_test_block32
 mkdir -p $output_dir
 
-#--resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/training-state-000028
+#--resume_ckpt 
 
-accelerate launch --num_processes 1 --main_process_ip localhost --config_file configs/fsdp.yaml train_arc.py \
+accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_arc.py \
   --run_dir $output_dir \
   --block_size 32 \
-  --grad_accum 1 #>> $output_dir.log 2>&1
+  --grad_accum 8 \
+  --temperature 1.0 >> $output_dir.log 2>&1
