@@ -30,7 +30,6 @@ python rollout_arc.py \
     --remasking low_confidence \
     --num_rollouts 8 \
     --max_problems -1 \
-    --add_solve_instruction \
     --output_file arc_results.add_records.json \
     --verbose \
     --model_path /mnt/fast/nobackup/scratch4weeks/mc03002/models/LLaDA-8B-Instruct \
