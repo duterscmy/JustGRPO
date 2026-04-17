@@ -1,0 +1,274 @@
+import json
+import re
+import argparse
+from typing import List, Dict, Any, Tuple, Set
+from collections import Counter
+from tqdm import tqdm
+import torch
+from transformers import AutoTokenizer, AutoModel
+
+
+class LLaDADiffusionLM:
+    """封装LLaDA模型，提供反向预测接口"""
+    
+    def __init__(self, model_path: str, device: str = 'cuda'):
+        self.device = device
+        print(f"Loading LLaDA model from {model_path}...")
+        self.model = AutoModel.from_pretrained(
+            model_path,
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16
+        ).to(device).eval()
+        
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+        if self.tokenizer.padding_side != 'left':
+            self.tokenizer.padding_side = 'left'
+        
+        self.mask_token_id = 126336
+        self.mask_token_text = self.tokenizer.decode([self.mask_token_id])
+        print(f"Model loaded. Mask token: '{self.mask_token_text}'")
+    
+    def predict_masked(self, text: str) -> Tuple[str, List[str]]:
+        """预测文本中所有[MASK]位置的token"""
+        encoded = self.tokenizer(
+            [text],
+            add_special_tokens=False,
+            padding=True,
+            return_tensors="pt"
+        )
+        input_ids = encoded['input_ids'].to(self.device)
+        
+        with torch.no_grad():
+            logits = self.model(input_ids).logits
+            mask_positions = (input_ids == self.mask_token_id)
+            
+            if not mask_positions.any():
+                return text, []
+            
+            predicted_token_ids = torch.argmax(logits, dim=-1)
+            predicted_tokens = []
+            for pos in mask_positions[0].nonzero(as_tuple=True)[0].tolist():
+                token_id = predicted_token_ids[0, pos].item()
+                token_text = self.tokenizer.decode([token_id])
+                predicted_tokens.append(token_text)
+            
+            output_ids = input_ids.clone()
+            output_ids[mask_positions] = predicted_token_ids[mask_positions]
+            output_text = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        
+        return output_text, predicted_tokens
+
+
+class BackwardVerifier:
+    """反向验证器：对每个候选答案，验证其能否正确预测被mask的数字"""
+    
+    def __init__(self, diffusion_lm: LLaDADiffusionLM):
+        self.diffusion_lm = diffusion_lm
+    
+    def _extract_numbers(self, text: str) -> List[Tuple[str, Tuple[int, int], str]]:
+        """从文本中提取所有数字及其位置"""
+        pattern = r'-?\d+\.?\d*'
+        numbers = []
+        for match in re.finditer(pattern, text):
+            num_str = match.group()
+            if num_str and num_str not in ['-', '.']:
+                start = max(0, match.start() - 10)
+                end = min(len(text), match.end() + 10)
+                context = text[start:end]
+                numbers.append((num_str, (match.start(), match.end()), context))
+        return numbers
+    
+    def _mask_number(self, text: str, positions: Tuple[int, int]) -> str:
+        """用[MASK]替换指定位置的数字"""
+        start, end = positions
+        original_num = text[start:end]
+        num_tokens = self.diffusion_lm.tokenizer.encode(original_num, add_special_tokens=False)
+        mask_text = self.diffusion_lm.mask_token_text * len(num_tokens)
+        return text[:start] + mask_text + text[end:]
+    
+    def verify_candidate(self, user: str, assistant: str, candidate: str) -> Dict[str, Any]:
+        """
+        验证单个候选答案
+        
+        Returns:
+            {
+                "candidate": 候选答案,
+                "total_numbers": 数字总数,
+                "correct_count": 正确预测数,
+                "backward_score": 正确率,
+                "digit_results": [
+                    {
+                        "original": 原始数字,
+                        "predicted": 预测的数字,
+                        "is_correct": 是否正确,
+                        "context": 上下文
+                    },
+                    ...
+                ]
+            }
+        """
+        numbers = self._extract_numbers(user)
+        
+        if not numbers:
+            return {
+                "candidate": candidate,
+                "total_numbers": 0,
+                "correct_count": 0,
+                "backward_score": 0.5,  # 无数字时中性
+                "digit_results": [],
+                "numbers": numbers,
+            }
+        
+        digit_results = []
+        correct_count = 0
+        
+        for original_num, positions, context in numbers:
+            # 构造masked问题
+            masked_user = self._mask_number(user, positions)
+            # 反向输入
+            backward_input = f"{masked_user}\n\n{assistant}"
+            
+            # 预测
+            _, predicted_tokens = self.diffusion_lm.predict_masked(backward_input)
+            predicted_num = ''.join(predicted_tokens).strip() if predicted_tokens else ""
+            
+            is_correct = (predicted_num == original_num)
+            if is_correct:
+                correct_count += 1
+            
+            digit_results.append({
+                "original": original_num,
+                "predicted": predicted_num,
+                "is_correct": is_correct,
+                "context": context
+            })
+        
+        total = len(numbers)
+        return {
+            "candidate": candidate,
+            "total_numbers": total,
+            "correct_count": correct_count,
+            "backward_score": correct_count / total if total > 0 else 0.5,
+            "digit_results": digit_results,
+            "numbers": numbers,
+        }
+
+
+def parse_ground_truth(text: str) -> Tuple[str, str]:
+    """从文本中提取最终答案"""
+    # 尝试提取 \\boxed{} 中的内容
+    boxed_match = re.search(r'\\boxed\{([^}]+)\}', text)
+    if boxed_match:
+        return text, boxed_match.group(1)
+    
+    # 尝试提取 "The answer is X" 格式
+    answer_match = re.search(r'(?:The|the)\s+answer\s+is\s+([A-D]|\d+(?:\.\d+)?)', text)
+    if answer_match:
+        return text, answer_match.group(1)
+    
+    # 取最后一行或默认
+    lines = [l.strip() for l in text.strip().split('\n') if l.strip()]
+    if lines:
+        last_line = lines[-1]
+        num_match = re.search(r'\d+(?:\.\d+)?', last_line)
+        if num_match:
+            return text, num_match.group()
+    
+    return text, ""
+
+
+def load_dataset(input_path: str) -> List[Dict]:
+    """加载数据集"""
+    with open(input_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    print(f"Loaded {len(data)} samples from {input_path}")
+    return data
+
+
+def save_dataset(data: List[Dict], output_path: str):
+    """保存数据集"""
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    print(f"Saved {len(data)} samples to {output_path}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Compute backward verification results')
+    parser.add_argument('input_file', type=str, help='Input JSON file path')
+    parser.add_argument('output_file', type=str, help='Output JSON file path')
+    parser.add_argument('--model_path', type=str,
+                        default='/mnt/fast/nobackup/scratch4weeks/mc03002/models/LLaDA-8B-Instruct',
+                        help='Path to LLaDA model')
+    parser.add_argument('--device', type=str, default='cuda',
+                        help='Device to use')
+    parser.add_argument('--max_samples', type=int, default=-1,
+                        help='Limit number of samples for testing')
+    args = parser.parse_args()
+    
+    # 加载模型
+    diffusion_lm = LLaDADiffusionLM(args.model_path, args.device)
+    verifier = BackwardVerifier(diffusion_lm)
+    
+    # 加载数据
+    dataset = load_dataset(args.input_file)
+    if args.max_samples > 0:
+        dataset = dataset[:args.max_samples]
+        print(f"Limited to {args.max_samples} samples")
+    
+    # 为每个样本添加 backward_result
+    for sample_idx, sample in enumerate(tqdm(dataset, desc="Processing samples")):
+        user = sample.get('question', sample.get('prompt', ''))
+        rollouts = sample.get('rollouts', [])
+        
+        # 提取所有候选答案
+        candidates = []
+        candidate_to_assistant = {}
+        for rollout in rollouts:
+            _, answer = parse_ground_truth(rollout)
+            if answer and answer not in candidate_to_assistant:
+                candidate_to_assistant[answer] = rollout
+                candidates.append(answer)
+        
+        # 对每个候选答案执行反向验证
+        backward_results = []
+        for candidate in candidates:
+            assistant = candidate_to_assistant.get(candidate)
+            if assistant:
+                result = verifier.verify_candidate(user, assistant, candidate)
+                backward_results.append(result)
+            else:
+                backward_results.append({
+                    "candidate": candidate,
+                    "total_numbers": 0,
+                    "correct_count": 0,
+                    "backward_score": 0.0,
+                    "digit_results": [],
+                    "error": "No assistant found"
+                })
+        
+        # 添加到样本
+        sample['backward_result'] = backward_results
+        
+        # 可选：添加前向投票信息，方便后续实验
+        all_answers = [parse_ground_truth(r)[1] for r in rollouts]
+        answer_counts = Counter(all_answers)
+        sample['forward_votes'] = dict(answer_counts)
+    
+    # 保存
+    save_dataset(dataset, args.output_file)
+    
+    # 打印统计
+    print("\n" + "="*60)
+    print("Backward Results Summary")
+    print("="*60)
+    for sample_idx, sample in enumerate(dataset[:5]):  # 只显示前5个
+        print(f"\nSample {sample_idx}:")
+        for br in sample.get('backward_result', []):
+            print(f"  Candidate: {br['candidate']} -> score: {br['backward_score']:.3f} ({br['correct_count']}/{br['total_numbers']})")
+    
+    if len(dataset) > 5:
+        print(f"\n... and {len(dataset)-5} more samples")
+
+
+if __name__ == "__main__":
+    main()
