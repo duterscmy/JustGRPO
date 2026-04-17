@@ -12,10 +12,14 @@ def load_data(filepath):
         return json.load(f)
 
 
-def analyze_fobar_failures(dataset):
-    """分析 voting 正确但 fobar 错误的样本"""
+def analyze_fobar_cases(dataset):
+    """分析 voting 和 fobar 的对错关系"""
     
-    failures = []
+    voting_correct_fobar_wrong = []  # voting对，fobar错
+    voting_wrong_fobar_correct = []  # voting错，fobar对
+    both_correct = []
+    both_wrong = []
+    
     voting_correct_count = 0
     fobar_correct_count = 0
     
@@ -66,88 +70,165 @@ def analyze_fobar_failures(dataset):
         
         fobar_correct = math_equal(fobar_answer, ground_truth)
         
+        # 统计
         if voting_correct:
             voting_correct_count += 1
-            if not fobar_correct:
-                # Voting 正确但 FOBAR 错误
-                failures.append({
-                    "sample_idx": idx,
-                    "question": sample.get('question', sample.get('prompt', ''))[:200],
-                    "ground_truth": ground_truth,
-                    "voting_answer": voting_answer,
-                    "fobar_answer": fobar_answer,
-                    "answers": answers,
-                    "answer_counts": dict(answer_counts),
-                    "forward_scores": forward_scores,
-                    "backward_scores": {k: candidate_to_score.get(k, 0) for k in unique_answers},
-                    "combined_scores": combined_scores
-                })
-        
         if fobar_correct:
             fobar_correct_count += 1
+        
+        # 分类记录
+        case_info = {
+            "sample_idx": idx,
+            "question": sample.get('question', sample.get('prompt', ''))[:300],
+            "ground_truth": ground_truth,
+            "voting_answer": voting_answer,
+            "fobar_answer": fobar_answer,
+            "answers": answers,
+            "answer_counts": dict(answer_counts),
+            "forward_scores": forward_scores,
+            "backward_scores": {k: candidate_to_score.get(k, 0) for k in unique_answers},
+            "combined_scores": combined_scores
+        }
+        
+        if voting_correct and not fobar_correct:
+            voting_correct_fobar_wrong.append(case_info)
+        elif not voting_correct and fobar_correct:
+            voting_wrong_fobar_correct.append(case_info)
+        elif voting_correct and fobar_correct:
+            both_correct.append(case_info)
+        else:
+            both_wrong.append(case_info)
     
-    return failures, voting_correct_count, fobar_correct_count
+    return {
+        "voting_correct_fobar_wrong": voting_correct_fobar_wrong,
+        "voting_wrong_fobar_correct": voting_wrong_fobar_correct,
+        "both_correct": both_correct,
+        "both_wrong": both_wrong,
+        "voting_correct_count": voting_correct_count,
+        "fobar_correct_count": fobar_correct_count,
+        "total_samples": len([s for s in dataset if s.get('rollouts') and s.get('answer')])
+    }
 
 
-def print_analysis(failures, voting_correct, fobar_correct):
-    print("=" * 80)
-    print("FOBAR Failure Analysis")
-    print("=" * 80)
-    print(f"Voting correct samples: {voting_correct}")
-    print(f"FOBAR correct samples: {fobar_correct}")
-    print(f"Voting correct but FOBAR wrong: {len(failures)}")
-    print(f"FOBAR degradation: {len(failures)}/{voting_correct} = {len(failures)/voting_correct*100:.1f}%")
-    print()
-    
-    # 分类失败原因
+def analyze_failure_reasons(cases, case_name):
+    """分析失败原因"""
     reason_stats = {
-        "backward_score_0_for_correct": 0,
-        "backward_score_1_for_wrong": 0,
-        "multiple_candidates_close": 0,
-        "no_backward_info": 0
+        "correct_backward_score_0": 0,      # 正确答案 backward_score=0
+        "wrong_backward_score_1": 0,        # 错误答案 backward_score=1
+        "correct_backward_score_low": 0,    # 正确答案 backward_score < 0.3
+        "wrong_backward_score_high": 0,     # 错误答案 backward_score > 0.7
+        "forward_tie": 0,                   # 前向分数接近 (<0.1差异)
+        "other": 0
     }
     
-    for f in failures:
-        correct_ans = f["ground_truth"]
-        voting_ans = f["voting_answer"]
-        fobar_ans = f["fobar_answer"]
+    for case in cases:
+        correct_ans = case["ground_truth"]
+        selected_ans = case["fobar_answer"] if "fobar" in case_name else case["voting_answer"]
         
-        bwd_scores = f["backward_scores"]
-        fwd_scores = f["forward_scores"]
+        bwd_scores = case["backward_scores"]
+        fwd_scores = case["forward_scores"]
         
-        # 检查正确候选的 backward_score
         correct_bwd = bwd_scores.get(correct_ans, -1)
-        fobar_bwd = bwd_scores.get(fobar_ans, -1)
+        selected_bwd = bwd_scores.get(selected_ans, -1)
+        
+        # 找出所有候选的前向分数
+        fwd_values = list(fwd_scores.values())
+        max_fwd = max(fwd_values)
+        second_fwd = sorted(fwd_values, reverse=True)[1] if len(fwd_values) > 1 else 0
         
         if correct_bwd == 0:
-            reason_stats["backward_score_0_for_correct"] += 1
-        elif fobar_bwd == 1:
-            reason_stats["backward_score_1_for_wrong"] += 1
-        elif abs(fwd_scores.get(correct_ans, 0) - fwd_scores.get(fobar_ans, 0)) < 0.1:
-            reason_stats["multiple_candidates_close"] += 1
+            reason_stats["correct_backward_score_0"] += 1
+        elif selected_bwd == 1:
+            reason_stats["wrong_backward_score_1"] += 1
+        elif correct_bwd < 0.3:
+            reason_stats["correct_backward_score_low"] += 1
+        elif selected_bwd > 0.7:
+            reason_stats["wrong_backward_score_high"] += 1
+        elif max_fwd - second_fwd < 0.1:
+            reason_stats["forward_tie"] += 1
         else:
-            reason_stats["no_backward_info"] += 1
+            reason_stats["other"] += 1
     
-    print("Failure Reasons:")
-    for reason, count in reason_stats.items():
-        print(f"  {reason}: {count}")
-    print()
+    return reason_stats
+
+
+def print_analysis(results):
+    print("=" * 80)
+    print("FOBAR vs Voting Analysis")
+    print("=" * 80)
+    
+    total = results["total_samples"]
+    voting_correct = results["voting_correct_count"]
+    fobar_correct = results["fobar_correct_count"]
+    
+    print(f"\n📊 Overall Statistics:")
+    print(f"  Total samples: {total}")
+    print(f"  Voting correct: {voting_correct} ({voting_correct/total*100:.1f}%)")
+    print(f"  FOBAR correct: {fobar_correct} ({fobar_correct/total*100:.1f}%)")
+    print(f"  Improvement: {fobar_correct - voting_correct:+.1f}%")
+    
+    print(f"\n📈 Case Breakdown:")
+    print(f"  ✅ Voting Correct → FOBAR Correct: {len(results['both_correct'])}")
+    print(f"  ❌ Voting Correct → FOBAR Wrong:  {len(results['voting_correct_fobar_wrong'])}")
+    print(f"  ✅ Voting Wrong  → FOBAR Correct: {len(results['voting_wrong_fobar_correct'])}")
+    print(f"  ❌ Voting Wrong  → FOBAR Wrong:   {len(results['both_wrong'])}")
+    
+    # 净收益
+    net_gain = len(results['voting_wrong_fobar_correct']) - len(results['voting_correct_fobar_wrong'])
+    print(f"\n📉 Net Gain: {net_gain:+d} ({net_gain/total*100:+.1f}%)")
+    
+    # 分析 voting correct → fobar wrong 的原因
+    if results['voting_correct_fobar_wrong']:
+        print("\n" + "=" * 80)
+        print("🔍 Why Voting Correct → FOBAR Wrong?")
+        print("=" * 80)
+        reasons = analyze_failure_reasons(results['voting_correct_fobar_wrong'], "fobar")
+        for reason, count in reasons.items():
+            if count > 0:
+                print(f"  {reason}: {count}")
+    
+    # 分析 voting wrong → fobar correct 的原因
+    if results['voting_wrong_fobar_correct']:
+        print("\n" + "=" * 80)
+        print("🎯 Why Voting Wrong → FOBAR Correct? (Success Cases)")
+        print("=" * 80)
+        reasons = analyze_failure_reasons(results['voting_wrong_fobar_correct'], "voting")
+        for reason, count in reasons.items():
+            if count > 0:
+                print(f"  {reason}: {count}")
     
     # 打印详细样例
-    print("Detailed Failure Examples (first 10):")
-    print("-" * 80)
-    for i, f in enumerate(failures[:10]):
-        print(f"\n[Sample {f['sample_idx']}]")
-        print(f"Question: {f['question']}...")
-        print(f"Ground Truth: {f['ground_truth']}")
-        print(f"Voting Answer: {f['voting_answer']} (correct)")
-        print(f"FOBAR Answer: {f['fobar_answer']} (wrong)")
-        print(f"All answers: {f['answers']}")
-        print(f"Answer counts: {f['answer_counts']}")
-        print(f"Forward scores: {f['forward_scores']}")
-        print(f"Backward scores: {f['backward_scores']}")
-        print(f"Combined scores: {f['combined_scores']}")
-        print("-" * 40)
+    print("\n" + "=" * 80)
+    print("📋 Detailed Examples")
+    print("=" * 80)
+    
+    # Voting Correct → FOBAR Wrong (前3个)
+    if results['voting_correct_fobar_wrong']:
+        print("\n❌ Voting Correct → FOBAR Wrong (first 3):")
+        print("-" * 60)
+        for i, case in enumerate(results['voting_correct_fobar_wrong'][:3]):
+            print(f"\n[{i+1}] Sample {case['sample_idx']}")
+            print(f"  Question: {case['question'][:150]}...")
+            print(f"  Ground Truth: {case['ground_truth']}")
+            print(f"  Voting Answer: {case['voting_answer']} ✓")
+            print(f"  FOBAR Answer: {case['fobar_answer']} ✗")
+            print(f"  Forward scores: {case['forward_scores']}")
+            print(f"  Backward scores: {case['backward_scores']}")
+            print(f"  Combined scores: {case['combined_scores']}")
+    
+    # Voting Wrong → FOBAR Correct (前3个)
+    if results['voting_wrong_fobar_correct']:
+        print("\n✅ Voting Wrong → FOBAR Correct (first 3):")
+        print("-" * 60)
+        for i, case in enumerate(results['voting_wrong_fobar_correct'][:3]):
+            print(f"\n[{i+1}] Sample {case['sample_idx']}")
+            print(f"  Question: {case['question'][:150]}...")
+            print(f"  Ground Truth: {case['ground_truth']}")
+            print(f"  Voting Answer: {case['voting_answer']} ✗")
+            print(f"  FOBAR Answer: {case['fobar_answer']} ✓")
+            print(f"  Forward scores: {case['forward_scores']}")
+            print(f"  Backward scores: {case['backward_scores']}")
+            print(f"  Combined scores: {case['combined_scores']}")
 
 
 def main():
@@ -155,20 +236,20 @@ def main():
     parser.add_argument('input_file', type=str, 
                         default='math500_results.add_records.add_digits_bwd.json',
                         help='Input JSON file with backward_result')
-    parser.add_argument('--output', '-o', type=str, default='fobar_failures.json',
-                        help='Output file for failures')
+    parser.add_argument('--output', '-o', type=str, default='fobar_analysis.json',
+                        help='Output file for detailed results')
     args = parser.parse_args()
     
     dataset = load_data(args.input_file)
     print(f"Loaded {len(dataset)} samples")
     
-    failures, voting_correct, fobar_correct = analyze_fobar_failures(dataset)
-    print_analysis(failures, voting_correct, fobar_correct)
+    results = analyze_fobar_cases(dataset)
+    print_analysis(results)
     
-    # 保存失败样例
+    # 保存详细结果
     with open(args.output, 'w', encoding='utf-8') as f:
-        json.dump(failures, f, indent=2, ensure_ascii=False)
-    print(f"\nFailures saved to {args.output}")
+        json.dump(results, f, indent=2, ensure_ascii=False)
+    print(f"\n💾 Detailed results saved to {args.output}")
 
 
 if __name__ == "__main__":
