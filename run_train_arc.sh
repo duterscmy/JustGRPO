@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name="train_arc"
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:4                # 请求8块GPU
+#SBATCH --ntasks-per-node=2
+#SBATCH --gres=gpu:2
 #SBATCH --time=24:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
@@ -19,5 +19,5 @@ mkdir -p $output_dir
 accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_arc.py \
   --run_dir $output_dir \
   --block_size 32 \
-  --grad_accum 8 \
+  --grad_accum 16 \
   --temperature 1.0 >> $output_dir.log 2>&1
