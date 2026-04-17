@@ -38,12 +38,12 @@ def extract_arc_answer(pred_str):
     if not pred_str or not isinstance(pred_str, str):
         return None
     
-    # 匹配 "the answer is (X)" 格式，找最后一个
-    pattern = r'[Tt]he\s+answer\s+is\s+\(([A-D])\)'
-    matches = re.findall(pattern, pred_str)
+    # 找最后一个独立的 A/B/C/D（不区分大小写）
+    pattern = r'\b([A-D])\b'
+    matches = re.findall(pattern, pred_str, re.IGNORECASE)
     
     if matches:
-        return matches[-1]
+        return matches[-1].upper()
     
     return None
 
@@ -51,6 +51,7 @@ def process_arc_dataset(model, tokenizer, device, args):
     """
     Process the ARC-Challenge dataset and generate rollouts for each problem
     """
+    model.tokenizer = tokenizer
     print("Loading ARC-Challenge dataset...")
     dataset = load_dataset("allenai/ai2_arc", "ARC-Challenge", split=args.split)
     
@@ -112,7 +113,7 @@ def process_arc_dataset(model, tokenizer, device, args):
                     cfg_scale=args.cfg_scale, 
                     remasking=args.remasking
                 )
-            
+            print(tokenizer)
             generated_text = tokenizer.batch_decode(
                 out[:, input_ids.shape[1]:], 
                 skip_special_tokens=True
@@ -272,7 +273,7 @@ def main():
         args.model_path, 
         trust_remote_code=True
     )
-    
+    print(tokenizer)
     # Set padding side to left (required for generation)
     if tokenizer.padding_side != 'left':
         tokenizer.padding_side = 'left'
