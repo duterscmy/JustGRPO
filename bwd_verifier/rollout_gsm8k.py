@@ -11,8 +11,8 @@ from tqdm import tqdm
 import sys
 import os
 
+from generate import generate
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from .generate import generate
 from utils.parser import extract_answer, parse_ground_truth
 from data.math import extract_answer_gsm8k
 
