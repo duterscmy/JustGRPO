@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name="eval_gsm8k"
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:4                # 请求2块GPU
+#SBATCH --ntasks-per-node=2
+#SBATCH --gres=gpu:2                # 请求2块GPU
 #SBATCH --time=3:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
@@ -52,7 +52,7 @@ log_path="${target_dir}/${base_name}.gsm8k.log"
 echo "Logging to: $log_path"
 
 # 5. 运行评估
-torchrun --standalone --nproc-per-node=4 eval.py \
+torchrun --standalone --nproc-per-node=2 eval.py \
   --ckpt_path "$model_path" \
   --steps 256 \
   --gen_length 256 \
