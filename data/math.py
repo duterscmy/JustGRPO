@@ -52,7 +52,7 @@ def collate_fn_arc(batch):
         
         prompt += "\nA: Let's think step by step."
         problems.append(prompt)
-    answers = [item['answer'] for item in batch]
+    answers = [item['answerKey'] for item in batch]
     return {"problems": problems, "answers": answers}
 
 def extract_answer_gsm8k(answer: str):
