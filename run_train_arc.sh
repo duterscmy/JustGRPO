@@ -19,5 +19,5 @@ mkdir -p $output_dir
 accelerate launch --num_processes 1 --main_process_ip localhost --config_file configs/fsdp.yaml train_arc.py \
   --run_dir $output_dir \
   --block_size 32 \
-  --grad_accum 1 \
+  --grad_accum 4 \
   --temperature 1.0 #>> $output_dir.log 2>&1
