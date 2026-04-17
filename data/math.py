@@ -54,6 +54,7 @@ def collate_fn_arc(batch):
         prompt += "\nA: Let's think step by step."
         problems.append(prompt)
         answers.append(item['answerKey'])
+    print("problems: {}".format(problems))
     print("answers: {}".format(answers))
     return {"problems": problems, "answers": answers}
 
@@ -673,7 +674,7 @@ def load_arc_dataset_and_reward(
     )
     
     if method == 'ttrl':
-        reward_fn = reward_ttrl
+        reward_fn = reward_ttrl_arc
     elif method == 'seq_entropy':
         reward_fn = reward_seq_entropy
     return dataloader, reward_fn
