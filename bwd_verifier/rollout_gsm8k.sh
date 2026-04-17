@@ -26,12 +26,12 @@ python rollout_gsm8k.py \
     --steps 256 \
     --gen_length 256 \
     --block_length 32 \
-    --temperature 0.6 \
+    --temperature 1.0 \
     --remasking low_confidence \
     --num_rollouts 8 \
     --max_problems -1 \
     --add_solve_instruction \
-    --output_file gsm8k_results.add_records.json \
+    --output_file gsm8k_results.add_records.tmp1.0.json \
     --verbose \
     --model_path /mnt/fast/nobackup/scratch4weeks/mc03002/models/LLaDA-8B-Instruct \
     --device cuda \
