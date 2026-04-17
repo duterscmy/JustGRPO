@@ -113,7 +113,6 @@ def process_arc_dataset(model, tokenizer, device, args):
                     cfg_scale=args.cfg_scale, 
                     remasking=args.remasking
                 )
-            print(tokenizer)
             generated_text = tokenizer.batch_decode(
                 out[:, input_ids.shape[1]:], 
                 skip_special_tokens=True
