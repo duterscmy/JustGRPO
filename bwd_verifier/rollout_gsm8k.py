@@ -12,7 +12,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from generate import generate
+from .generate import generate
 from utils.parser import extract_answer, parse_ground_truth
 from data.math import extract_answer_gsm8k
 

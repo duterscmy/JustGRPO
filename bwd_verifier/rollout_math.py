@@ -89,9 +89,9 @@ def process_math_dataset(model, tokenizer, device, args):
             
             with torch.no_grad():
                 out, records = generate(
-                    model, 
-                    input_ids, 
-                    attention_mask, 
+                    model=model, 
+                    input_ids=input_ids, 
+                    attention_mask=attention_mask, 
                     steps=args.steps, 
                     gen_length=args.gen_length, 
                     block_length=args.block_length, 
