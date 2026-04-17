@@ -168,7 +168,7 @@ def train(config: TrainConfig):
                             gen_length=config.gen_length,
                             repeat_time=config.sample_repeat_times,
                             block_size=config.block_size,
-                            add_chat_template=False,
+                            apply_chat_template=False,
                             temperature=config.temperature,
                         )
                         inputs_chunks.append(inputs)
