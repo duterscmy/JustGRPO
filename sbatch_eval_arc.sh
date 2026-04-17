@@ -43,6 +43,6 @@ accelerate launch --num_processes 1 eval_llada.py \
   --model llada_dist \
   --num_fewshot 0 \
   --output_path $result_path --log_samples \
-  --model_args model_path='/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct',temperature=${temperature},enable_early_exit=false,enable_soar=false,gen_length=${length},steps=${length},block_length=${block},answer_length=5,torch_dtype=torch.bfloat16 &> $log_path
+  --model_args model_path=${model_path},temperature=${temperature},enable_early_exit=false,enable_soar=false,gen_length=${length},steps=${length},block_length=${block},answer_length=5,torch_dtype=torch.bfloat16 &> $log_path
 
 echo "Evaluation completed!"
