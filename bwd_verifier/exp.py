@@ -5,8 +5,6 @@ from collections import Counter
 import numpy as np
 import torch
 import re
-from transformers import AutoTokenizer, AutoModel
-import torch.nn.functional as F
 import sys, os
 from multiprocessing import Pool, cpu_count
 from functools import partial
@@ -19,128 +17,81 @@ from utils.grader import math_equal
 from utils.parser import extract_answer, parse_ground_truth
 
 
-class LLaDADiffusionLM:
+def normalize_answer_with_math_equal(answer: str, ground_truth: str = None) -> str:
     """
-    封装LLaDA模型，提供predict_masked接口
-    用于FOBAR的后向推理
+    使用 math_equal 对答案进行归一化
+    对于数学等价的答案（如 4000 和 4,000），返回统一表示
     """
+    if not answer:
+        return answer
     
-    def __init__(self, model_path='/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct', device='cuda'):
-        """
-        初始化LLaDA模型和tokenizer
-        """
-        self.device = device
-        self.model = AutoModel.from_pretrained(
-            model_path, 
-            trust_remote_code=True, 
-            torch_dtype=torch.bfloat16
-        ).to(device).eval()
-        
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_path, 
-            trust_remote_code=True
-        )
-        
-        # LLaDA使用左填充
-        if self.tokenizer.padding_side != 'left':
-            self.tokenizer.padding_side = 'left'
-        
-        # mask token ID
-        self.mask_token_id = 126336
-        
-        print(f"LLaDA model loaded on {device}")
-        print(f"Mask token ID: {self.mask_token_id}")       
-        print(f"Mask token text: '{self.tokenizer.decode([self.mask_token_id])}'")
-        self.mask_token_text = self.tokenizer.decode([self.mask_token_id])
-        
-    def predict_masked(self, masked_text: str, temperature: float = 0.0) -> Tuple[str, dict]:
-        """预测masked文本中被mask的数字"""
-        # 1. Tokenize输入
-        messages = [{"role": "user", "content": masked_text}]
-        prompt = self.tokenizer.apply_chat_template(
-            messages, 
-            add_generation_prompt=True, 
-            tokenize=False
-        )
-        
-        # 编码
-        encoded = self.tokenizer(
-            [masked_text],
-            add_special_tokens=False,
-            padding=True,
-            return_tensors="pt"
-        )
-        
-        input_ids = encoded['input_ids'].to(self.device)
-        attention_mask = encoded['attention_mask'].to(self.device)
-        
-        # 2. 单次forward预测
-        with torch.no_grad():
-            outputs = self.model(input_ids, attention_mask=attention_mask)
-            logits = outputs.logits
-            
-            # 找到mask token的位置
-            mask_positions = (input_ids == self.mask_token_id)
-            
-            if not mask_positions.any():
-                return masked_text, {"mask_positions": [], "predicted_tokens": []}
-            
-            # 3. 预测
-            if temperature == 0:
-                predicted_token_ids = torch.argmax(logits, dim=-1)
-            else:
-                logits_with_noise = self._add_gumbel_noise(logits, temperature)
-                predicted_token_ids = torch.argmax(logits_with_noise, dim=-1)
-            
-            # 4. 只替换mask位置
-            output_ids = input_ids.clone()
-            output_ids[mask_positions] = predicted_token_ids[mask_positions]
-            
-            # 5. 解码
-            predicted_text = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
-            
-            # 6. 记录预测信息
-            mask_positions_list = mask_positions[0].nonzero(as_tuple=True)[0].tolist()
-            predicted_tokens = []
-            for pos in mask_positions_list:
-                token_id = predicted_token_ids[0, pos].item()
-                token_text = self.tokenizer.decode([token_id])
-                predicted_tokens.append(token_text)
-            
-            info = {
-                "mask_positions": mask_positions_list,
-                "predicted_tokens": predicted_tokens,
-                "num_masks": len(mask_positions_list)
-            }
-            
-        return predicted_text, info
+    # 如果有 ground_truth，尝试找到等价的标准形式
+    if ground_truth is not None:
+        if math_equal(answer, ground_truth):
+            return ground_truth
     
-    def _add_gumbel_noise(self, logits, temperature):
-        """添加Gumbel噪声用于采样"""
-        if temperature == 0:
-            return logits
-        logits = logits.to(torch.float64)
-        noise = torch.rand_like(logits, dtype=torch.float64)
-        gumbel_noise = (-torch.log(noise)) ** temperature
-        return logits.exp() / gumbel_noise
+    # 通用归一化：移除逗号、空格等
+    normalized = answer.strip()
+    # 移除数字中的逗号（如 "4,000" -> "4000"）
+    normalized = re.sub(r'(\d),(\d)', r'\1\2', normalized)
+    # 移除首尾空格
+    normalized = normalized.strip()
+    
+    return normalized
+
+
+def normalize_answers_in_votes(votes: Dict[str, int]) -> Dict[str, int]:
+    """
+    对投票字典中的答案进行归一化，合并数学等价的答案
+    使用 math_equal 进行两两比较（由于答案数量通常很小，O(n^2) 可接受）
+    """
+    if not votes:
+        return votes
+    
+    answers = list(votes.keys())
+    n = len(answers)
+    
+    # 找出等价类
+    merged = {}
+    used = set()
+    
+    for i in range(n):
+        if i in used:
+            continue
+        ans_i = answers[i]
+        # 找到与 ans_i 等价的所有答案
+        equiv_class = [ans_i]
+        for j in range(i + 1, n):
+            if j in used:
+                continue
+            ans_j = answers[j]
+            if math_equal(ans_i, ans_j):
+                equiv_class.append(ans_j)
+                used.add(j)
+        # 选择代表元（出现次数最多的，或第一个）
+        representative = max(equiv_class, key=lambda x: votes.get(x, 0))
+        # 合并票数
+        total_votes = sum(votes.get(ans, 0) for ans in equiv_class)
+        merged[representative] = total_votes
+        used.add(i)
+    
+    return merged
 
 
 class AnswerSelector:
     """答案选择器，支持多种策略"""
     
-    def __init__(self, strategy='first', diffusion_lm=None, device='cuda'):
+    def __init__(self, strategy='first', combine_method='geometric'):
         """
         Args:
             strategy: 选择策略
                 - 'first': 直接选择第一个rollout
                 - 'majority': 多数投票
-                - 'fobar': 前向+后向验证（需要diffusion_lm）
-            diffusion_lm: LLaDA模型实例（仅fobar策略需要）
-            device: 设备
+                - 'fobar': 前向+后向验证
+            combine_method: 组合方式，'geometric' 或 'arithmetic'
         """
         self.strategy = strategy
-        self.diffusion_lm = diffusion_lm
-        self.device = device
+        self.combine_method = combine_method
         self._cache = {}
         self._parsed_cache = {}
     
@@ -154,7 +105,8 @@ class AnswerSelector:
         """根据策略选择最佳答案"""
         cache_key = (
             sample.get('question', sample.get('prompt', '')),
-            self.strategy
+            self.strategy,
+            self.combine_method
         )
         
         if cache_key in self._cache:
@@ -192,147 +144,109 @@ class AnswerSelector:
         }
     
     def _select_majority(self, rollouts: List[str]) -> Tuple[str, Dict]:
-        """多数投票选择答案"""
+        """多数投票选择答案（带数学等价归一化）"""
         answers = [self._get_parsed_answer(r)[1] for r in rollouts]
         
+        # 使用 math_equal 进行归一化投票
         answer_counts = Counter(answers)
-        most_common = answer_counts.most_common(1)[0]
+        normalized_counts = normalize_answers_in_votes(dict(answer_counts))
+        
+        most_common = max(normalized_counts.items(), key=lambda x: x[1])
         selected_answer = most_common[0]
         max_count = most_common[1]
         
         return selected_answer, {
             "strategy": "majority",
-            "answer_counts": dict(answer_counts),
+            "answer_counts_raw": dict(answer_counts),
+            "answer_counts_normalized": normalized_counts,
             "selected_count": max_count,
             "total_rollouts": len(rollouts),
-            "all_answers": answers
+            "all_answers_raw": answers
         }
     
     def _select_fobar(self, sample: Dict) -> Tuple[str, Dict]:
-        """使用FOBAR策略选择答案"""
-        if self.diffusion_lm is None:
-            print("Warning: No diffusion_lm provided for fobar strategy, falling back to majority")
-            return self._select_majority(sample['rollouts'])
-        
+        """
+        使用FOBAR策略选择答案
+        从 backward_result 字段读取后向分数
+        """
         rollouts = sample['rollouts']
-        user = sample.get('question', sample.get('prompt', ''))
         
-        # 1. 提取所有答案
-        answers = [self._get_parsed_answer(r)[1] for r in rollouts]
-        unique_answers = list(set(answers))
+        # 1. 提取所有答案（使用 math_equal 归一化）
+        answers_raw = [self._get_parsed_answer(r)[1] for r in rollouts]
         
-        # 2. 计算前向分数（频率）
-        answer_counts = Counter(answers)
+        # 使用 math_equal 找到每个答案的等价代表元
+        # 首先收集唯一答案
+        unique_answers_raw = list(set(answers_raw))
+        # 建立等价映射
+        answer_to_representative = {}
+        representatives = []
+        for ans in unique_answers_raw:
+            found = False
+            for rep in representatives:
+                if math_equal(ans, rep):
+                    answer_to_representative[ans] = rep
+                    found = True
+                    break
+            if not found:
+                representatives.append(ans)
+                answer_to_representative[ans] = ans
+        
+        # 归一化后的答案列表
+        answers_normalized = [answer_to_representative[ans] for ans in answers_raw]
+        unique_answers = list(set(answers_normalized))
+        
+        # 2. 计算前向分数（频率）- 基于归一化后的答案
+        answer_counts = Counter(answers_normalized)
         forward_scores = {ans: count/len(rollouts) for ans, count in answer_counts.items()}
         
-        # 3. 计算后向分数（使用LLaDA验证）
-        backward_scores = self._compute_backward_scores(user, unique_answers, rollouts)
+        # 3. 从 backward_result 读取后向分数
+        backward_result = sample.get('backward_result', [])
+        backward_scores_raw = {}
+        for br in backward_result:
+            candidate = br.get('candidate', '')
+            # 找到该候选答案对应的代表元
+            rep = answer_to_representative.get(candidate, candidate)
+            backward_scores_raw[rep] = br.get('backward_score', 0.0)
         
-        # 4. 组合分数（几何平均）
+        # 如果某些代表元没有 backward_score，给默认值 0
+        for ans in unique_answers:
+            if ans not in backward_scores_raw:
+                backward_scores_raw[ans] = 0.0
+        
+        # 4. 组合分数
         combined_scores = {}
         for ans in unique_answers:
             f = forward_scores.get(ans, 0.0)
-            b = backward_scores.get(ans, 0.0)
-            combined_scores[ans] = np.sqrt(f * b) if f > 0 and b > 0 else 0.0
+            b = backward_scores_raw.get(ans, 0.0)
+            
+            if self.combine_method == 'geometric':
+                # 几何平均: sqrt(f * b)
+                combined_scores[ans] = np.sqrt(f * b) if f > 0 and b > 0 else 0.0
+            elif self.combine_method == 'arithmetic':
+                # 算术平均: (f + b) / 2
+                combined_scores[ans] = (f + b) / 2
+            else:
+                raise ValueError(f"Unknown combine_method: {self.combine_method}")
         
         # 5. 选择分数最高的答案
-        selected_answer = max(combined_scores, key=combined_scores.get)
+        if combined_scores:
+            selected_answer = max(combined_scores, key=combined_scores.get)
+        else:
+            selected_answer = unique_answers[0] if unique_answers else ""
         
         return selected_answer, {
             "strategy": "fobar",
+            "combine_method": self.combine_method,
             "forward_scores": forward_scores,
-            "backward_scores": backward_scores,
+            "backward_scores": backward_scores_raw,
             "combined_scores": combined_scores,
-            "all_answers": answers
+            "all_answers_raw": answers_raw,
+            "all_answers_normalized": answers_normalized,
+            "answer_mapping": answer_to_representative
         }
     
-    def _compute_backward_scores(self, user: str, candidate_answers: List[str], 
-                                      rollouts: List[str]) -> Dict[str, float]:
-        """
-        计算反向分数（适配Mask Predict模型）
-        
-        关键修改：
-        1. Zc: 统计所有mask位置中预测正确的总数（不是比例）
-        2. PB: 归一化概率，而非正确率
-        3. 使用mask token ID而非字符串"[MASK]"
-        """
-        # 提取user中的所有数字
-        numbers = self._extract_numbers(user)
-        
-        if not numbers:
-            # 没有数字时均匀分配概率
-            n_candidates = len(candidate_answers)
-            return {ans: 1.0/n_candidates for ans in candidate_answers}
-        
-        Z_dict = {}  # 存储每个候选答案的Zc（正确预测总数）
-        PB = {}  # 存储每个候选答案的PB（归一化概率）
-        for candidate in candidate_answers:
-            # 找到对应的assistant response
-            assistant = None
-            for r in rollouts:
-                if self._get_parsed_answer(r)[1] == candidate:
-                    assistant = r
-                    break
-            
-            if not assistant:
-                Z_dict[candidate] = 0
-                continue
-            
-            Zc = 0  # 论文公式(2): 正确预测的总次数
-            
-            # 对每个被mask的数字位置
-            for original_num, positions, context in numbers:
-                # 创建masked question（使用真正的mask token）
-                masked_user = self._mask_number_with_token(user, positions)
-                print(f"\nOriginal user: {user}")
-                print(f"Masked user: {masked_user}")
-                # 构建反向输入（不需要template，因为mask已经暗示了要预测什么）
-                backward_input = f"{masked_user}\n\n{assistant}"
-                # LLaDA预测（单次，因为是mask predict）
-                predicted_text, pred_info = self.diffusion_lm.predict_masked(backward_input)
-                
-                # 提取预测的数字
-                predicted_num = ''.join(pred_info["predicted_tokens"]).strip()
-                
-                # 论文公式(2): 累加正确预测
-                if predicted_num == original_num:
-                    Zc += 1
-                print(f"Original: {original_num}, Predicted: {predicted_num}, Zc: {Zc}")
-            
-            Z_dict[candidate] = Zc  # 每个rollout能够正确预测数字的数量
-            PB[candidate] = Zc/len(numbers) if numbers else 0.5  # 初始PB等于Zc，后续会归一化
-        print(f"PB before normalization: {PB}")
-        # # 论文公式(3): 计算PB（归一化概率）
-        # total_Z = sum(Z_dict.values())
-        # epsilon = 1e-8  # 避免除零
-        # PB = {}
-        
-        # for candidate, Zc in Z_dict.items():
-        #     # PB(Aˆc) = (Zc + ε) / (sum(Zc') + ε*|A|)
-        #     PB[candidate] = (Zc + epsilon) / (total_Z + epsilon * len(candidate_answers))
-        
-        return PB
-
-    def _mask_number_with_token(self, text: str, positions: Tuple[int, int]) -> str:
-        """
-        使用真正的mask token替换数字（而非字符串"[MASK]"）
-        需要tokenize来精确定位
-        """
-        start, end = positions
-        original_num = text[start:end]
-        
-        # Tokenize原始数字，看它占多少个token
-        num_tokens = self.diffusion_lm.tokenizer.encode(original_num, add_special_tokens=False)
-        num_token_count = len(num_tokens)
-        
-        # 生成对应数量的[MASK] token
-        mask_token_text = self.diffusion_lm.tokenizer.decode([self.diffusion_lm.mask_token_id])
-        masks = mask_token_text * num_token_count
-        
-        return text[:start] + masks + text[end:]
-
     def _extract_numbers(self, text: str) -> List[Tuple[str, Tuple[int, int], str]]:
-        """从文本中提取数字"""
+        """从文本中提取数字（保留用于其他策略）"""
         pattern = r'-?\d+\.?\d*'
         numbers = []
         for match in re.finditer(pattern, text):
@@ -347,13 +261,6 @@ class AnswerSelector:
     def _select_highest_confidence(self, rollouts: List[str], rollouts_records: List[List[Dict]]) -> Tuple[str, Dict]:
         """
         选择置信度最高的rollout的答案
-        
-        Args:
-            rollouts: 生成的答案文本列表
-            rollouts_records: 每个rollout的解码记录，包含每个token的置信度
-        
-        Returns:
-            (selected_answer, info) 包含置信度详细信息
         """
         if not rollouts_records or len(rollouts_records) != len(rollouts):
             print("Warning: No confidence records found, falling back to first rollout")
@@ -362,20 +269,15 @@ class AnswerSelector:
         confidence_scores = []
         
         for idx, records in enumerate(rollouts_records):
-            # 直接提取置信度（已经排好序）
             token_confidences = [record.get('confidence', 0.0) for record in records]
             
-            # 计算该rollout的综合置信度
             if token_confidences:
-                # 使用平均置信度作为主要指标
                 score = sum(token_confidences) / len(token_confidences)
-                
                 confidence_scores.append({
                     "rollout_idx": idx,
                     "score": score,
                     "avg_confidence": score,
                     "num_tokens": len(token_confidences),
-                    "token_confidences": token_confidences
                 })
             else:
                 confidence_scores.append({
@@ -383,10 +285,8 @@ class AnswerSelector:
                     "score": 0.0,
                     "avg_confidence": 0.0,
                     "num_tokens": 0,
-                    "token_confidences": []
                 })
         
-        # 选择置信度最高的rollout
         best_rollout = max(confidence_scores, key=lambda x: x['score'])
         best_idx = best_rollout['rollout_idx']
         selected_answer = self._get_parsed_answer(rollouts[best_idx])[1]
@@ -399,64 +299,36 @@ class AnswerSelector:
                 "avg": best_rollout['avg_confidence'],
                 "num_tokens": best_rollout['num_tokens']
             },
-            "all_confidence_scores": [
-                {
-                    "rollout_idx": cs['rollout_idx'],
-                    "score": cs['score'],
-                    "avg_confidence": cs['avg_confidence'],
-                    "num_tokens": cs['num_tokens']
-                }
-                for cs in confidence_scores
-            ],
         }
 
     def _select_weighted_confidence(self, rollouts: List[str], rollouts_records: List[List[Dict]]) -> Tuple[str, Dict]:
         """
         基于置信度加权投票选择答案
-        
-        每个rollout对答案的投票权重等于其置信度分数
         """
         if not rollouts_records or len(rollouts_records) != len(rollouts):
             print("Warning: No confidence records found, falling back to majority")
             return self._select_majority(rollouts)
         
-        # 计算每个rollout的答案和置信度
-        answer_confidence = {}  # 存储每个答案的累计置信度
-        answer_votes = {}  # 存储每个答案的投票次数
-        rollout_details = []
+        answer_confidence = {}
+        answer_votes = {}
         
         for idx, records in enumerate(rollouts_records):
-            # 提取答案
             answer = self._get_parsed_answer(rollouts[idx])[1]
-            
-            # 计算该rollout的置信度分数
             token_confidences = [record.get('confidence', 0.0) for record in records]
             
-            # 计算rollout置信度
             if token_confidences:
-                # 使用平均置信度作为权重
                 weight = sum(token_confidences) / len(token_confidences)
             else:
                 weight = 0.0
             
-            # 累加置信度权重
             if answer not in answer_confidence:
                 answer_confidence[answer] = 0.0
                 answer_votes[answer] = 0
             answer_confidence[answer] += weight
             answer_votes[answer] += 1
-            
-            rollout_details.append({
-                "rollout_idx": idx,
-                "answer": answer,
-                "confidence_weight": weight,
-                "num_tokens": len(token_confidences)
-            })
         
-        # 选择累计置信度最高的答案
         selected_answer = max(answer_confidence, key=answer_confidence.get)
         
-        # 计算前向分数（用于对比）
         all_answers = [self._get_parsed_answer(r)[1] for r in rollouts]
         answer_counts = Counter(all_answers)
         forward_scores = {ans: count/len(rollouts) for ans, count in answer_counts.items()}
@@ -468,17 +340,12 @@ class AnswerSelector:
             "answer_confidence_scores": answer_confidence,
             "answer_votes": answer_votes,
             "forward_scores": forward_scores,
-            "rollout_details": rollout_details,
-            "all_answers": all_answers
         }
 
     def _select_confidence_threshold(self, rollouts: List[str], rollouts_records: List[List[Dict]], 
                                     threshold: float = 0.9) -> Tuple[str, Dict]:
         """
-        基于置信度阈值选择：只考虑平均置信度高于阈值的rollout，然后多数投票
-        
-        Args:
-            threshold: 置信度阈值，只考虑置信度 >= threshold 的rollout
+        基于置信度阈值选择
         """
         if not rollouts_records or len(rollouts_records) != len(rollouts):
             print("Warning: No confidence records found, falling back to majority")
@@ -488,7 +355,6 @@ class AnswerSelector:
         rollout_filter_details = []
         
         for idx, records in enumerate(rollouts_records):
-            # 计算置信度
             token_confidences = [record.get('confidence', 0.0) for record in records]
             
             if token_confidences:
@@ -508,12 +374,10 @@ class AnswerSelector:
             if avg_confidence >= threshold:
                 high_confidence_answers.append(answer)
         
-        # 如果没有rollout通过阈值，回退到多数投票
         if not high_confidence_answers:
             print(f"Warning: No rollout meets confidence threshold {threshold}, falling back to majority")
             return self._select_majority(rollouts)
         
-        # 对高置信度的rollout进行多数投票
         answer_counts = Counter(high_confidence_answers)
         most_common = answer_counts.most_common(1)[0]
         selected_answer = most_common[0]
@@ -531,16 +395,11 @@ class AnswerSelector:
 
 
 def evaluate_single_sample(args_tuple):
-    """
-    评估单个样本（用于多进程）
-    注意：这个函数需要在模块级别定义，以便可以被pickle序列化
-    """
-    sample, strategy, ground_truth_key, diffusion_lm, sample_idx = args_tuple
+    """评估单个样本（用于多进程）"""
+    sample, strategy, ground_truth_key, combine_method, sample_idx = args_tuple
     
-    # 创建选择器
-    selector = AnswerSelector(strategy=strategy, diffusion_lm=diffusion_lm)
+    selector = AnswerSelector(strategy=strategy, combine_method=combine_method)
     
-    # 选择答案
     try:
         selected_answer, info = selector.select_answer(sample)
     except Exception as e:
@@ -549,10 +408,7 @@ def evaluate_single_sample(args_tuple):
         selected_answer = ""
         info = {"error": str(e)}
     
-    # 获取标准答案
     ground_truth = sample.get(ground_truth_key, '')
-    
-    # 判断是否正确
     is_correct = math_equal(selected_answer, ground_truth)
     
     return {
@@ -566,36 +422,32 @@ def evaluate_single_sample(args_tuple):
 
 
 class ParallelEvaluator:
-    """并行评估器，支持多进程（保持结果有序）"""
+    """并行评估器"""
     
     def __init__(self, strategies: List[str] = ['first', 'majority'], 
-                 diffusion_lm=None, num_workers: int = None,
+                 combine_method: str = 'geometric',
+                 num_workers: int = None,
                  ground_truth_key: str = 'answer'):
         self.strategies = strategies
-        self.diffusion_lm = diffusion_lm
+        self.combine_method = combine_method
         self.num_workers = num_workers or cpu_count()
         self.ground_truth_key = ground_truth_key
     
     def evaluate_dataset(self, dataset: List[Dict]) -> Dict[str, Any]:
-        """并行评估整个数据集（保持原始顺序）"""
+        """并行评估整个数据集"""
         results = {}
         
         for strategy in self.strategies:
             print(f"\n{'='*60}")
             print(f"Evaluating strategy: {strategy}")
+            if strategy == 'fobar':
+                print(f"Combine method: {self.combine_method}")
             print(f"Using {self.num_workers} workers")
             print(f"Dataset size: {len(dataset)}")
             print(f"{'='*60}")
             
-            # 检查数据集是否有rollouts_records
-            has_records = any('rollouts_records' in s and s['rollouts_records'] for s in dataset)
-            print(f"📊 Dataset has confidence records: {has_records}")
-            
-            # 准备参数
             args_list = [
-                (sample, strategy, self.ground_truth_key, 
-                 self.diffusion_lm if strategy == 'fobar' else None, 
-                 idx)
+                (sample, strategy, self.ground_truth_key, self.combine_method, idx)
                 for idx, sample in enumerate(dataset)
             ]
             
@@ -603,8 +455,6 @@ class ParallelEvaluator:
             
             with Pool(processes=self.num_workers) as pool:
                 unordered_results = []
-                
-                # 使用imap_unordered并显示进度
                 for result in tqdm(
                     pool.imap_unordered(evaluate_single_sample, args_list),
                     total=len(dataset),
@@ -618,14 +468,11 @@ class ParallelEvaluator:
             speed = len(dataset) / elapsed
             print(f"\n⏱️  Strategy {strategy} completed in {elapsed:.1f}s ({speed:.2f} samples/sec)")
             
-            # 按原始顺序排序
             unordered_results.sort(key=lambda x: x['sample_idx'])
             for result in unordered_results:
                 del result['sample_idx']
             
             sample_results = unordered_results
-            
-            # 统计结果
             correct_count = sum(1 for r in sample_results if r['is_correct'])
             accuracy = correct_count / len(dataset) if dataset else 0
             
@@ -642,12 +489,13 @@ class ParallelEvaluator:
 
 
 class SequentialEvaluator:
-    """顺序评估器（用于对比）"""
+    """顺序评估器"""
     
     def __init__(self, strategies: List[str] = ['first', 'majority'], 
-                 diffusion_lm=None, ground_truth_key: str = 'answer'):
+                 combine_method: str = 'geometric',
+                 ground_truth_key: str = 'answer'):
         self.strategies = strategies
-        self.diffusion_lm = diffusion_lm
+        self.combine_method = combine_method
         self.ground_truth_key = ground_truth_key
     
     def evaluate_dataset(self, dataset: List[Dict]) -> Dict[str, Any]:
@@ -657,13 +505,14 @@ class SequentialEvaluator:
         for strategy in self.strategies:
             print(f"\n{'='*60}")
             print(f"Evaluating strategy: {strategy}")
+            if strategy == 'fobar':
+                print(f"Combine method: {self.combine_method}")
             print(f"{'='*60}")
             
             start_time = time.time()
             correct_count = 0
             sample_results = []
-            selector = AnswerSelector(strategy=strategy, 
-                                     diffusion_lm=self.diffusion_lm if strategy == 'fobar' else None)
+            selector = AnswerSelector(strategy=strategy, combine_method=self.combine_method)
             
             for i, sample in enumerate(tqdm(dataset, desc=f"Processing {strategy}", unit="sample")):
                 selected_answer, info = selector.select_answer(sample)
@@ -707,18 +556,18 @@ def load_dataset(filepath: str) -> List[Dict]:
     elapsed = time.time() - start_time
     print(f"Loaded {len(dataset)} samples in {elapsed:.2f}s")
     
-    # 检查第一个样本的结构
+    # 检查数据格式
     if dataset:
         sample0 = dataset[0]
         print(f"\n📋 Sample structure:")
         print(f"  Keys: {list(sample0.keys())}")
         if 'rollouts' in sample0:
             print(f"  Number of rollouts: {len(sample0['rollouts'])}")
-        if 'rollouts_records' in sample0:
-            records = sample0['rollouts_records']
-            print(f"  Has rollouts_records: {bool(records)}")
-            if records and len(records) > 0:
-                print(f"  First record length: {len(records[0]) if records[0] else 0}")
+        if 'backward_result' in sample0:
+            print(f"  Has backward_result: True")
+            br = sample0['backward_result']
+            if br:
+                print(f"    First candidate: {br[0].get('candidate', 'N/A')} -> score: {br[0].get('backward_score', 'N/A')}")
     
     return dataset
 
@@ -727,10 +576,13 @@ def save_results(results: Dict, output_path: str):
     """保存评估结果"""
     summary = {
         "strategies": {},
-        "total_samples": 0
+        "total_samples": 0,
+        "combine_method": results.get('combine_method', 'geometric')
     }
     
     for strategy, data in results.items():
+        if strategy == 'combine_method':
+            continue
         summary["strategies"][strategy] = {
             "accuracy": data["accuracy"],
             "correct": data["correct"],
@@ -758,60 +610,53 @@ def save_results(results: Dict, output_path: str):
 
 def main():
     parser = argparse.ArgumentParser(description='Evaluate different answer selection strategies')
-    parser.add_argument('input_file', type=str, help='Input JSON file path')
+    parser.add_argument('input_file', type=str, help='Input JSON file path (with backward_result)')
     parser.add_argument('output_file', type=str, help='Output JSON file path')
     parser.add_argument('--strategies', '-s', type=str, nargs='+', 
-                        default=['first', 'majority', 'highest_confidence', 'weighted_confidence', 'confidence_threshold'],
-                        choices=['first', 'majority', 'fobar','highest_confidence', 'weighted_confidence', 'confidence_threshold'],
+                        default=['first', 'majority', 'fobar'],
+                        choices=['first', 'majority', 'fobar', 'highest_confidence', 
+                                'weighted_confidence', 'confidence_threshold'],
                         help='Strategies to evaluate')
-    parser.add_argument('--use_fobar', action='store_true', 
-                        help='Enable FOBAR strategy (requires LLaDA model)')
-    parser.add_argument('--model_path', type=str, 
-                        default='/mnt/fast/nobackup/scratch4weeks/mc03002/models/LLaDA-8B-Instruct',
-                        help='Path to LLaDA model for FOBAR')
-    parser.add_argument('--device', type=str, default='cuda',
-                        help='Device for LLaDA model')
-    parser.add_argument('--num_workers','-n', type=int, default=None,
+    parser.add_argument('--combine_method', '-c', type=str, default='geometric',
+                        choices=['geometric', 'arithmetic'],
+                        help='Combine method for FOBAR (geometric or arithmetic)')
+    parser.add_argument('--num_workers', '-n', type=int, default=None,
                         help='Number of parallel workers (default: CPU count)')
+    parser.add_argument('--sequential', action='store_true',
+                        help='Use sequential evaluation (for debugging)')
     
     args = parser.parse_args()
     
-    # 加载数据集
+    # 加载数据集（需要包含 backward_result）
     dataset = load_dataset(args.input_file)
     
-    # 初始化LLaDA（如果需要FOBAR策略）
-    diffusion_lm = None
-    if args.use_fobar or 'fobar' in args.strategies:
-        print("\nLoading LLaDA model for FOBAR strategy...")
-        try:
-            diffusion_lm = LLaDADiffusionLM(
-                model_path=args.model_path,
-                device=args.device
-            )
-            print("LLaDA model loaded successfully")
-        except Exception as e:
-            print(f"Warning: Could not load LLaDA model: {e}")
-            if 'fobar' in args.strategies:
-                args.strategies.remove('fobar')
-                print("Removed fobar from strategies")
+    # 检查是否有 backward_result
+    has_backward = any('backward_result' in s and s['backward_result'] for s in dataset)
+    if 'fobar' in args.strategies and not has_backward:
+        print("\n⚠️  Warning: 'fobar' strategy requires backward_result in dataset!")
+        print("   Please run backward verification script first.")
+        if 'fobar' in args.strategies:
+            args.strategies.remove('fobar')
+            print("   Removed fobar from strategies.")
     
     # 选择评估器
-    if 'fobar' in args.strategies:
-        print("\n⚠️  FOBAR strategy detected, using sequential evaluation (parallel not supported for FOBAR)")
+    if args.sequential:
+        print("\n📋 Using sequential evaluation...")
         evaluator = SequentialEvaluator(
             strategies=args.strategies,
-            diffusion_lm=diffusion_lm
+            combine_method=args.combine_method
         )
     else:
         print(f"\n✅ Using parallel evaluation with {args.num_workers or cpu_count()} workers...")
         evaluator = ParallelEvaluator(
             strategies=args.strategies,
-            diffusion_lm=diffusion_lm,
+            combine_method=args.combine_method,
             num_workers=args.num_workers
         )
     
     # 评估
     results = evaluator.evaluate_dataset(dataset)
+    results['combine_method'] = args.combine_method
     
     # 保存结果
     save_results(results, args.output_file)

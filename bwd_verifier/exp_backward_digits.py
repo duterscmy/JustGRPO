@@ -5,6 +5,8 @@ from typing import List, Dict, Any, Tuple, Set
 from collections import Counter
 from tqdm import tqdm
 import torch
+import traceback
+import time
 from transformers import AutoTokenizer, AutoModel
 
 
@@ -28,35 +30,55 @@ class LLaDADiffusionLM:
         self.mask_token_text = self.tokenizer.decode([self.mask_token_id])
         print(f"Model loaded. Mask token: '{self.mask_token_text}'")
     
-    def predict_masked(self, text: str) -> Tuple[str, List[str]]:
-        """预测文本中所有[MASK]位置的token"""
-        encoded = self.tokenizer(
-            [text],
-            add_special_tokens=False,
-            padding=True,
-            return_tensors="pt"
-        )
-        input_ids = encoded['input_ids'].to(self.device)
+    def predict_masked(self, text: str, max_retries: int = 3) -> Tuple[str, List[str]]:
+        """预测文本中所有[MASK]位置的token，带重试机制"""
+        for attempt in range(max_retries):
+            try:
+                # 限制输入长度，避免过长
+                if len(text) > 4000:
+                    print(f"  ⚠️  Input too long ({len(text)} chars), truncating...")
+                    text = text[:4000]
+                
+                encoded = self.tokenizer(
+                    [text],
+                    add_special_tokens=False,
+                    padding=True,
+                    return_tensors="pt"
+                )
+                input_ids = encoded['input_ids'].to(self.device)
+                
+                # 检查输入长度
+                if input_ids.shape[1] > 2048:
+                    print(f"  ⚠️  Token sequence too long ({input_ids.shape[1]} tokens), truncating...")
+                    input_ids = input_ids[:, :2048]
+                
+                with torch.no_grad():
+                    logits = self.model(input_ids).logits
+                    mask_positions = (input_ids == self.mask_token_id)
+                    
+                    if not mask_positions.any():
+                        return text, []
+                    
+                    predicted_token_ids = torch.argmax(logits, dim=-1)
+                    predicted_tokens = []
+                    for pos in mask_positions[0].nonzero(as_tuple=True)[0].tolist():
+                        token_id = predicted_token_ids[0, pos].item()
+                        token_text = self.tokenizer.decode([token_id])
+                        predicted_tokens.append(token_text)
+                    
+                    output_ids = input_ids.clone()
+                    output_ids[mask_positions] = predicted_token_ids[mask_positions]
+                    output_text = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+                
+                return output_text, predicted_tokens
+                
+            except Exception as e:
+                print(f"  ⚠️  Prediction attempt {attempt+1} failed: {e}")
+                if attempt == max_retries - 1:
+                    return text, []
+                time.sleep(1)
         
-        with torch.no_grad():
-            logits = self.model(input_ids).logits
-            mask_positions = (input_ids == self.mask_token_id)
-            
-            if not mask_positions.any():
-                return text, []
-            
-            predicted_token_ids = torch.argmax(logits, dim=-1)
-            predicted_tokens = []
-            for pos in mask_positions[0].nonzero(as_tuple=True)[0].tolist():
-                token_id = predicted_token_ids[0, pos].item()
-                token_text = self.tokenizer.decode([token_id])
-                predicted_tokens.append(token_text)
-            
-            output_ids = input_ids.clone()
-            output_ids[mask_positions] = predicted_token_ids[mask_positions]
-            output_text = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
-        
-        return output_text, predicted_tokens
+        return text, []
 
 
 class BackwardVerifier:
@@ -82,66 +104,79 @@ class BackwardVerifier:
         """用[MASK]替换指定位置的数字"""
         start, end = positions
         original_num = text[start:end]
-        num_tokens = self.diffusion_lm.tokenizer.encode(original_num, add_special_tokens=False)
-        mask_text = self.diffusion_lm.mask_token_text * len(num_tokens)
+        try:
+            num_tokens = self.diffusion_lm.tokenizer.encode(original_num, add_special_tokens=False)
+        except Exception as e:
+            print(f"    ⚠️  Tokenization failed for '{original_num}': {e}")
+            num_tokens = [self.diffusion_lm.tokenizer.unk_token_id] if self.diffusion_lm.tokenizer.unk_token_id else [0]
+        mask_text = self.diffusion_lm.mask_token_text * max(1, len(num_tokens))
         return text[:start] + mask_text + text[end:]
     
-    def verify_candidate(self, user: str, assistant: str, candidate: str) -> Dict[str, Any]:
+    def verify_candidate(self, user: str, assistant: str, candidate: str, 
+                         verbose: bool = False) -> Dict[str, Any]:
         """
         验证单个候选答案
-        
-        Returns:
-            {
-                "candidate": 候选答案,
-                "total_numbers": 数字总数,
-                "correct_count": 正确预测数,
-                "backward_score": 正确率,
-                "digit_results": [
-                    {
-                        "original": 原始数字,
-                        "predicted": 预测的数字,
-                        "is_correct": 是否正确,
-                        "context": 上下文
-                    },
-                    ...
-                ]
-            }
         """
         numbers = self._extract_numbers(user)
+        
+        if verbose:
+            print(f"    Numbers found: {[n[0] for n in numbers]}")
         
         if not numbers:
             return {
                 "candidate": candidate,
                 "total_numbers": 0,
                 "correct_count": 0,
-                "backward_score": 0.5,  # 无数字时中性
+                "backward_score": 0.5,
                 "digit_results": [],
-                "numbers": numbers,
+                "numbers": [],
+                "error": "No numbers in question"
             }
         
         digit_results = []
         correct_count = 0
         
-        for original_num, positions, context in numbers:
-            # 构造masked问题
-            masked_user = self._mask_number(user, positions)
-            # 反向输入
-            backward_input = f"{masked_user}\n\n{assistant}"
+        for idx, (original_num, positions, context) in enumerate(numbers):
+            if verbose:
+                print(f"      Processing number {idx+1}/{len(numbers)}: '{original_num}'")
             
-            # 预测
-            _, predicted_tokens = self.diffusion_lm.predict_masked(backward_input)
-            predicted_num = ''.join(predicted_tokens).strip() if predicted_tokens else ""
-            
-            is_correct = (predicted_num == original_num)
-            if is_correct:
-                correct_count += 1
-            
-            digit_results.append({
-                "original": original_num,
-                "predicted": predicted_num,
-                "is_correct": is_correct,
-                "context": context
-            })
+            try:
+                # 构造masked问题
+                masked_user = self._mask_number(user, positions)
+                # 反向输入（限制assistant长度）
+                assistant_short = assistant[:1000] if len(assistant) > 1000 else assistant
+                backward_input = f"{masked_user}\n\n{assistant_short}"
+                
+                if verbose:
+                    print(f"        Backward input length: {len(backward_input)} chars")
+                
+                # 预测
+                _, predicted_tokens = self.diffusion_lm.predict_masked(backward_input)
+                predicted_num = ''.join(predicted_tokens).strip() if predicted_tokens else ""
+                
+                if verbose:
+                    print(f"        Original: '{original_num}' → Predicted: '{predicted_num}'")
+                
+                is_correct = (predicted_num == original_num)
+                if is_correct:
+                    correct_count += 1
+                
+                digit_results.append({
+                    "original": original_num,
+                    "predicted": predicted_num,
+                    "is_correct": is_correct,
+                    "context": context
+                })
+                
+            except Exception as e:
+                print(f"      ❌ Error processing number {idx+1}: {e}")
+                digit_results.append({
+                    "original": original_num,
+                    "predicted": "",
+                    "is_correct": False,
+                    "context": context,
+                    "error": str(e)
+                })
         
         total = len(numbers)
         return {
@@ -150,29 +185,32 @@ class BackwardVerifier:
             "correct_count": correct_count,
             "backward_score": correct_count / total if total > 0 else 0.5,
             "digit_results": digit_results,
-            "numbers": numbers,
+            "numbers": [{"value": n[0], "context": n[2]} for n in numbers],
         }
 
 
 def parse_ground_truth(text: str) -> Tuple[str, str]:
     """从文本中提取最终答案"""
+    if not text:
+        return "", ""
+    
     # 尝试提取 \\boxed{} 中的内容
     boxed_match = re.search(r'\\boxed\{([^}]+)\}', text)
     if boxed_match:
-        return text, boxed_match.group(1)
+        return text, boxed_match.group(1).strip()
     
     # 尝试提取 "The answer is X" 格式
     answer_match = re.search(r'(?:The|the)\s+answer\s+is\s+([A-D]|\d+(?:\.\d+)?)', text)
     if answer_match:
-        return text, answer_match.group(1)
+        return text, answer_match.group(1).strip()
     
     # 取最后一行或默认
     lines = [l.strip() for l in text.strip().split('\n') if l.strip()]
     if lines:
         last_line = lines[-1]
-        num_match = re.search(r'\d+(?:\.\d+)?', last_line)
+        num_match = re.search(r'(\d+(?:\.\d+)?)', last_line)
         if num_match:
-            return text, num_match.group()
+            return text, num_match.group(1).strip()
     
     return text, ""
 
@@ -203,6 +241,8 @@ def main():
                         help='Device to use')
     parser.add_argument('--max_samples', type=int, default=-1,
                         help='Limit number of samples for testing')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Print detailed debug info')
     args = parser.parse_args()
     
     # 加载模型
@@ -216,43 +256,80 @@ def main():
         print(f"Limited to {args.max_samples} samples")
     
     # 为每个样本添加 backward_result
+    failed_samples = []
+    
     for sample_idx, sample in enumerate(tqdm(dataset, desc="Processing samples")):
-        user = sample.get('question', sample.get('prompt', ''))
-        rollouts = sample.get('rollouts', [])
-        
-        # 提取所有候选答案
-        candidates = []
-        candidate_to_assistant = {}
-        for rollout in rollouts:
-            _, answer = parse_ground_truth(rollout)
-            if answer and answer not in candidate_to_assistant:
-                candidate_to_assistant[answer] = rollout
-                candidates.append(answer)
-        
-        # 对每个候选答案执行反向验证
-        backward_results = []
-        for candidate in candidates:
-            assistant = candidate_to_assistant.get(candidate)
-            if assistant:
-                result = verifier.verify_candidate(user, assistant, candidate)
-                backward_results.append(result)
-            else:
-                backward_results.append({
-                    "candidate": candidate,
-                    "total_numbers": 0,
-                    "correct_count": 0,
-                    "backward_score": 0.0,
-                    "digit_results": [],
-                    "error": "No assistant found"
-                })
-        
-        # 添加到样本
-        sample['backward_result'] = backward_results
-        
-        # 可选：添加前向投票信息，方便后续实验
-        all_answers = [parse_ground_truth(r)[1] for r in rollouts]
-        answer_counts = Counter(all_answers)
-        sample['forward_votes'] = dict(answer_counts)
+        try:
+            user = sample.get('question', sample.get('prompt', ''))
+            rollouts = sample.get('rollouts', [])
+            
+            if not user:
+                print(f"\n⚠️  Sample {sample_idx}: No question/prompt field")
+                sample['backward_result'] = []
+                sample['forward_votes'] = {}
+                continue
+            
+            if not rollouts:
+                print(f"\n⚠️  Sample {sample_idx}: No rollouts")
+                sample['backward_result'] = []
+                sample['forward_votes'] = {}
+                continue
+            
+            # 提取所有候选答案
+            candidates = []
+            candidate_to_assistant = {}
+            for rollout_idx, rollout in enumerate(rollouts):
+                try:
+                    _, answer = parse_ground_truth(rollout)
+                    if answer and answer not in candidate_to_assistant:
+                        candidate_to_assistant[answer] = rollout
+                        candidates.append(answer)
+                except Exception as e:
+                    print(f"\n⚠️  Sample {sample_idx}, rollout {rollout_idx}: Parse error: {e}")
+            
+            if args.verbose:
+                print(f"\n📊 Sample {sample_idx}: Found {len(candidates)} candidates: {candidates}")
+            
+            # 对每个候选答案执行反向验证
+            backward_results = []
+            for candidate in candidates:
+                assistant = candidate_to_assistant.get(candidate)
+                if assistant:
+                    if args.verbose:
+                        print(f"\n  🔍 Verifying candidate: {candidate}")
+                    result = verifier.verify_candidate(user, assistant, candidate, verbose=args.verbose)
+                    backward_results.append(result)
+                else:
+                    backward_results.append({
+                        "candidate": candidate,
+                        "total_numbers": 0,
+                        "correct_count": 0,
+                        "backward_score": 0.0,
+                        "digit_results": [],
+                        "error": "No assistant found"
+                    })
+            
+            # 添加到样本
+            sample['backward_result'] = backward_results
+            
+            # # 添加前向投票信息
+            # all_answers = []
+            # for rollout in rollouts:
+            #     try:
+            #         _, ans = parse_ground_truth(rollout)
+            #         all_answers.append(ans)
+            #     except:
+            #         all_answers.append("")
+            # answer_counts = Counter(all_answers)
+            # sample['forward_votes'] = dict(answer_counts)
+            
+        except Exception as e:
+            print(f"\n❌ Sample {sample_idx} failed: {e}")
+            traceback.print_exc()
+            failed_samples.append(sample_idx)
+            sample['backward_result'] = []
+            # sample['forward_votes'] = {}
+            sample['backward_error'] = str(e)
     
     # 保存
     save_dataset(dataset, args.output_file)
@@ -261,13 +338,25 @@ def main():
     print("\n" + "="*60)
     print("Backward Results Summary")
     print("="*60)
-    for sample_idx, sample in enumerate(dataset[:5]):  # 只显示前5个
-        print(f"\nSample {sample_idx}:")
-        for br in sample.get('backward_result', []):
-            print(f"  Candidate: {br['candidate']} -> score: {br['backward_score']:.3f} ({br['correct_count']}/{br['total_numbers']})")
     
-    if len(dataset) > 5:
-        print(f"\n... and {len(dataset)-5} more samples")
+    success_count = 0
+    for sample_idx, sample in enumerate(dataset[:10]):  # 只显示前10个
+        if 'backward_error' not in sample:
+            success_count += 1
+            print(f"\nSample {sample_idx}:")
+            for br in sample.get('backward_result', []):
+                print(f"  Candidate: {br['candidate']} -> score: {br['backward_score']:.3f} ({br.get('correct_count', 0)}/{br.get('total_numbers', 0)})")
+    
+    if len(dataset) > 10:
+        print(f"\n... and {len(dataset)-10} more samples")
+    
+    print(f"\n✅ Successfully processed: {success_count}/{len(dataset)} samples")
+    if failed_samples:
+        print(f"❌ Failed samples: {failed_samples}")
+    
+    # 额外打印统计信息
+    total_candidates = sum(len(s.get('backward_result', [])) for s in dataset)
+    print(f"Total candidates verified: {total_candidates}")
 
 
 if __name__ == "__main__":
