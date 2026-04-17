@@ -21,4 +21,4 @@ mkdir -p logs
 export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
- python exp.py gsm8k_results.json   gsm8k_results.eval.fobar_add_template.json  --strategies fobar
+ python exp.py gsm8k_results.add_records.add_digits_bwd.json   gsm8k_results.add_records.add_digits_bwd.eval.json  --strategies 'first'  'majority'  'fobar'  'highest_confidence' 'weighted_confidence' 'confidence_threshold'
