@@ -11,13 +11,16 @@
 source ~/.bashrc # 你的环境名
 conda activate ttrl
 
-output_dir=./checkpoints_arc_num_generation8_test_block32
+block=32
+t=1.0
+lr=1e-6
+output_dir=./checkpoints_arc_num_generation8_test_block${block}_t${t}_lr${lr}
 mkdir -p $output_dir
 
 #--resume_ckpt 
-
 accelerate launch --num_processes 2 --main_process_ip localhost --config_file configs/fsdp.yaml train_arc.py \
   --run_dir $output_dir \
-  --block_size 32 \
+  --block_size $block \
   --grad_accum 16 \
-  --temperature 1.0 >> $output_dir.log 2>&1
+  --lr $lr \
+  --temperature $t >> $output_dir.log 2>&1

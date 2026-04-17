@@ -22,7 +22,7 @@ class TrainConfig:
     batch_size_per_device: int = 1
     grad_accumulation: int = 8
     total_steps: int = 10
-    learning_rate: float = 5e-6
+    learning_rate: float = 1e-6
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
     seed: int = 1234
@@ -247,7 +247,7 @@ def parse_args():
     parser.add_argument("--grad_accum", type=int, default=8, help="Gradient accumulation steps")
     parser.add_argument("--resume_ckpt", type=str, default=None, help="Resume checkpoint path")
     parser.add_argument("--block_size", type=int, default=1, help="Generate Block Size")
-    parser.add_argument("--temperature", type=float, default=1.0,  help="rollout temperature")
+    parser.add_argument("--temperature", '-t',type=float, default=1.0,  help="rollout temperature")
     parser.add_argument("--lr", type=float, default=5e-6,  help="lr")
     
     return parser.parse_args()
