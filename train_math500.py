@@ -260,6 +260,8 @@ def parse_args():
     parser.add_argument("--block_size", type=int, default=1, help="Generate Block Size")
     parser.add_argument("--only_rollout", type=int, default=0)
     parser.add_argument("--max_level", type=int, default=3, help="Maximum difficulty level to train on")
+    parser.add_argument("--total_steps", type=int, default=50, help="Total training steps")
+    parser.add_argument("--save_every", type=int, default=5, help="Save checkpoint every N steps")
     
     return parser.parse_args()
 
@@ -275,7 +277,10 @@ if __name__ == "__main__":
         temperature= args.temperature,
         learning_rate= args.lr,
         block_size=args.block_size,
-        only_rollout=args.only_rollout
+        only_rollout=args.only_rollout,
+        max_level=args.max_level,
+        total_steps=args.total_steps,
+        save_every=args.save_every,
     )
 
     train(config)

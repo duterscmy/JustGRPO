@@ -26,4 +26,6 @@ accelerate launch --num_processes 4 --main_process_ip localhost --config_file co
   --lr $lr \
   --block_size $block \
   --max_level $max_level \
+  --total_steps 20 --save_every 5 \
+  --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_block32_t0.6_lr1e-6_level1_5_0417/training-state-000005 \
   --grad_accum 8 >> $output_dir.log 2>&1
