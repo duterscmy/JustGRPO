@@ -21,4 +21,4 @@ mkdir -p logs
 export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
- python exp.py math500_results.add_records.add_digits_bwd.json  math500_results.add_records.add_digits_bwd.eval.json  --strategies 'first'  'majority'  'fobar'  'highest_confidence' 'weighted_confidence' 'confidence_threshold'
+ python exp.py math500_results.add_records.add_digits_bwd.json  math500_results.add_records.add_digits_bwd.eval.fobar.json  --strategies 'fobar'

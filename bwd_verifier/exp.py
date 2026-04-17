@@ -218,7 +218,8 @@ class AnswerSelector:
         for ans in unique_answers:
             f = forward_scores.get(ans, 0.0)
             b = backward_scores_raw.get(ans, 0.0)
-            
+            if b == 0.0:
+                b = 0.01
             if self.combine_method == 'geometric':
                 # 几何平均: sqrt(f * b)
                 combined_scores[ans] = np.sqrt(f * b) if f > 0 and b > 0 else 0.0
