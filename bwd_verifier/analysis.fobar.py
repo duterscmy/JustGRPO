@@ -61,6 +61,8 @@ def analyze_fobar_cases(dataset):
         for ans in unique_answers:
             f = forward_scores.get(ans, 0)
             b = candidate_to_score.get(ans, 0)
+            if b == 0.0:
+                b = 0.01  # 避免乘积为0导致的几何平均问题
             combined_scores[ans] = (f * b) ** 0.5 if f > 0 and b > 0 else 0
         
         if combined_scores:
