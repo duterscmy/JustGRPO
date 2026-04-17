@@ -38,6 +38,7 @@ def collate_fn_aime2024(batch):
 def collate_fn_arc(batch):
     """Collate function for ARC dataset."""
     problems = []
+    answers = []
     for item in batch:
         question = item['question'].strip()
         choices = item['choices']
@@ -52,7 +53,8 @@ def collate_fn_arc(batch):
         
         prompt += "\nA: Let's think step by step."
         problems.append(prompt)
-    answers = [item['answerKey'] for item in batch]
+        answers.append(item['answerKey'])
+    print("answers: {}".format(answers))
     return {"problems": problems, "answers": answers}
 
 def extract_answer_gsm8k(answer: str):
