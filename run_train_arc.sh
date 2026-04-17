@@ -16,7 +16,7 @@ mkdir -p $output_dir
 
 #--resume_ckpt 
 
-accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_arc.py \
+accelerate launch --num_processes 2 --main_process_ip localhost --config_file configs/fsdp.yaml train_arc.py \
   --run_dir $output_dir \
   --block_size 32 \
   --grad_accum 16 \
