@@ -248,6 +248,7 @@ def parse_args():
     parser.add_argument("--resume_ckpt", type=str, default=None, help="Resume checkpoint path")
     parser.add_argument("--block_size", type=int, default=1, help="Generate Block Size")
     parser.add_argument("--temperature", type=float, default=1.0,  help="rollout temperature")
+    parser.add_argument("--lr", type=float, default=5e-6,  help="lr")
     
     return parser.parse_args()
 
@@ -262,6 +263,7 @@ if __name__ == "__main__":
         resume_ckpt=args.resume_ckpt,
         block_size=args.block_size,
         temperature= args.temperature,
+        learning_rate=args.lr,
     )
     
 
