@@ -1,6 +1,8 @@
 import json
 import argparse
 from collections import Counter
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.grader import math_equal
 from utils.parser import parse_ground_truth
 
