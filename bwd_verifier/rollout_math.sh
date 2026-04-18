@@ -21,6 +21,7 @@ mkdir -p logs
 export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
+seed=1
 # Run the evaluation script with default parameters
 python rollout_math.py \
     --steps 256 \
@@ -31,10 +32,10 @@ python rollout_math.py \
     --num_rollouts 8 \
     --max_problems -1 \
     --add_solve_instruction \
-    --output_file math500_results.add_records.json \
+    --output_file math500_results.add_records.v${seed}.json \
     --verbose \
     --model_path /mnt/fast/nobackup/scratch4weeks/mc03002/models/LLaDA-8B-Instruct \
     --device cuda \
-    --seed 42
+    --seed ${seed}
 
 echo "Evaluation completed!"
