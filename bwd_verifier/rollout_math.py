@@ -110,8 +110,7 @@ def process_math_dataset(model, tokenizer, device, args):
             rollouts.append(generated_text)
             # rollouts_records.append(records)
             filtered_records = []
-            print(sorted(records, key=lambda x: x.get('step', 0)))
-            for record in sorted(records, key=lambda x: x.get('step', 0)):
+            for record in sorted(records, key=lambda x: x.get('position', 0)):
                 if record.get('token_id') == 126081:
                     break  # 遇到token_id=126081时停止，不包括这条记录
                 filtered_records.append(record)
