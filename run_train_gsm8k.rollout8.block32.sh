@@ -11,7 +11,7 @@
 source ~/.bashrc # 你的环境名
 conda activate ttrl
 
-output_dir=./checkpoints_gsm8k_num_generation8_test_block32_0415
+output_dir=./checkpoints_gsm8k_num_generation8_test_block32_0418_batch64
 mkdir -p $output_dir
 
 #--resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/training-state-000028
@@ -19,6 +19,5 @@ mkdir -p $output_dir
 accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_gsm8k.rollout8.py \
   --run_dir $output_dir \
   --block_size 32 \
-  --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_gsm8k_num_generation8_test_block32_0415/training-state-000025 \
-  --total_steps 40 --save_every 5 \
-  --grad_accum 8 >> $output_dir.log 2>&1
+  --total_steps 10 --save_every 5 \
+  --grad_accum 16 >> $output_dir.log 2>&1
