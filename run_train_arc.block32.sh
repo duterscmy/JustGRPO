@@ -23,5 +23,6 @@ accelerate launch --num_processes 4 --main_process_ip localhost --config_file co
   --block_size $block \
   --grad_accum 16 \
   --lr $lr \
-  --total_steps 10 --save_every 5 \
+  --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_arc_num_generation8_test_block32_t1.0_lr1e-6_0418_batch64/training-state-000010 \
+  --total_steps 20 --save_every 5 \
   --temperature $t >> $output_dir.log 2>&1
