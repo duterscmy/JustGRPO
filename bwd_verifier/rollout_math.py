@@ -53,8 +53,9 @@ def process_math_dataset(model, tokenizer, device, args):
         
         # Create prompt with chat template
         if args.add_solve_instruction:
-            postfix = 'Solve it step by step. Wrap the final answer in a \\boxed{}.'
-            user_content = problem + " " + postfix
+            # postfix = 'Solve it step by step. Wrap the final answer in a \\boxed{}.'
+            postfix = r'(Please put the final answer in \boxed{} tag, i.e. $\boxed{answer here}$)'
+            user_content = problem + postfix
         else:
             user_content = problem
             

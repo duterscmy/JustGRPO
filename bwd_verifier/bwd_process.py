@@ -359,7 +359,7 @@ class FOBARWithLLaDA:
         }
 
 
-def process_dataset(dataset_path: str, output_path: str, device='cuda', verbose=True):
+def process_dataset(dataset_path: str, output_path: str, model_path: str, device='cuda', verbose=True):
     """处理整个数据集"""
     # 加载数据
     with open(dataset_path, 'r', encoding='utf-8') as f:
@@ -367,7 +367,7 @@ def process_dataset(dataset_path: str, output_path: str, device='cuda', verbose=
     
     # 初始化LLaDA
     print("Loading LLaDA model...")
-    diffusion_lm = LLaDADiffusionLM(device=device)
+    diffusion_lm = LLaDADiffusionLM(model_path=model_path, device=device)
     
     # 初始化FOBAR
     fobar = FOBARWithLLaDA(diffusion_lm, verbose=verbose)
@@ -406,6 +406,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='FOBAR with LLaDA - 使用扩散语言模型进行后向验证')
     parser.add_argument('input_json', type=str, help='输入JSON文件路径')
     parser.add_argument('output_json', type=str, help='输出JSON文件路径')
+    parser.add_argument('--model','-m', type=str, default='/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct', help='LLaDA模型路径')
     parser.add_argument('--device', type=str, default='cuda', help='设备 (cuda/cpu)')
     parser.add_argument('--verbose', action='store_true', default=True, help='显示详细信息')
     parser.add_argument('--no-verbose', dest='verbose', action='store_false', help='不显示详细信息')
@@ -415,6 +416,7 @@ if __name__ == "__main__":
     results = process_dataset(
         args.input_json,
         args.output_json,
+        args.model,
         device=args.device,
         verbose=args.verbose
     )
