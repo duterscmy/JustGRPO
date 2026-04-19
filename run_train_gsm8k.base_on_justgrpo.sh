@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name="train_gsm8k_8"
+#SBATCH --job-name="train_gsm8k_just"
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:4                # 请求8块GPU
