@@ -412,7 +412,7 @@ def evaluate_dataset(dataset: List[Dict],
                 for future in tqdm(concurrent.futures.as_completed(futures), 
                                 total=len(args_list), desc=strategy, ncols=80):
                     try:
-                        result = future.result(timeout=10)  # 每个样本最多10秒
+                        result = future.result(timeout=2)  # 每个样本最多10秒
                         raw.append(result)
                     except FuturesTimeout:
                         idx = futures[future]
