@@ -276,52 +276,29 @@ def main():
                 continue
             
             # 提取所有候选答案
-            candidates = []
-            candidate_to_assistant = {}
-            for rollout_idx, rollout in enumerate(rollouts):
-                try:
-                    _, answer = parse_ground_truth(rollout)
-                    if answer and answer not in candidate_to_assistant:
-                        candidate_to_assistant[answer] = rollout
-                        candidates.append(answer)
-                except Exception as e:
-                    print(f"\n⚠️  Sample {sample_idx}, rollout {rollout_idx}: Parse error: {e}")
+            # candidates = []
+            # candidate_to_assistant = {}
+            # for rollout_idx, rollout in enumerate(rollouts):
+            #     try:
+            #         _, answer = parse_ground_truth(rollout)
+            #         if answer and answer not in candidate_to_assistant:
+            #             candidate_to_assistant[answer] = rollout
+            #             candidates.append(answer)
+            #     except Exception as e:
+            #         print(f"\n⚠️  Sample {sample_idx}, rollout {rollout_idx}: Parse error: {e}")
             
-            if args.verbose:
-                print(f"\n📊 Sample {sample_idx}: Found {len(candidates)} candidates: {candidates}")
+            # if args.verbose:
+            #     print(f"\n📊 Sample {sample_idx}: Found {len(candidates)} candidates: {candidates}")
             
             # 对每个候选答案执行反向验证
             backward_results = []
-            for candidate in candidates:
-                assistant = candidate_to_assistant.get(candidate)
-                if assistant:
-                    if args.verbose:
-                        print(f"\n  🔍 Verifying candidate: {candidate}")
-                    result = verifier.verify_candidate(user, assistant, candidate, verbose=args.verbose)
-                    backward_results.append(result)
-                else:
-                    backward_results.append({
-                        "candidate": candidate,
-                        "total_numbers": 0,
-                        "correct_count": 0,
-                        "backward_score": 0.0,
-                        "digit_results": [],
-                        "error": "No assistant found"
-                    })
+            for rollout in rollouts:
+                _, answer = parse_ground_truth(rollout)
+                result = verifier.verify_candidate(user, rollout, answer, verbose=args.verbose)
+                backward_results.append(result)
             
             # 添加到样本
             sample['backward_result'] = backward_results
-            
-            # # 添加前向投票信息
-            # all_answers = []
-            # for rollout in rollouts:
-            #     try:
-            #         _, ans = parse_ground_truth(rollout)
-            #         all_answers.append(ans)
-            #     except:
-            #         all_answers.append("")
-            # answer_counts = Counter(all_answers)
-            # sample['forward_votes'] = dict(answer_counts)
             
         except Exception as e:
             print(f"\n❌ Sample {sample_idx} failed: {e}")
