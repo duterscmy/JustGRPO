@@ -31,7 +31,7 @@ python rollout_gsm8k.py \
     --remasking low_confidence \
     --num_rollouts 8 \
     --max_problems -1 \
-    --output_file gsm8k_results.add_records.tmp1.0.seed${seed}.json \
+    --output_file gsm8k_results.add_records.tmp1.0.v${seed}.json \
     --verbose \
     --model_path /mnt/fast/nobackup/scratch4weeks/mc03002/models/LLaDA-8B-Instruct \
     --device cuda \

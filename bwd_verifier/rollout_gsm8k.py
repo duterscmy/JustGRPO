@@ -79,6 +79,7 @@ def process_gsm8k_dataset(model, tokenizer, device, args):
         # Generate multiple rollouts
         rollouts = []
         rollouts_records = []
+        rollouts_confidence = []
         for rollout_idx in range(args.num_rollouts):
             if args.verbose:
                 print(f"\nGenerating rollout {rollout_idx + 1}/{args.num_rollouts} for problem {idx + 1}")
@@ -103,14 +104,29 @@ def process_gsm8k_dataset(model, tokenizer, device, args):
             
             print(f"Generated rollout {rollout_idx + 1}:\n{generated_text}\n")
             rollouts.append(generated_text)
-            rollouts_records.append(records)
+            # rollouts_records.append(records)
+            filtered_records = []
+            for record in sorted(records, key=lambda x: x.get('position', 0)):
+                if record.get('token_id') == 126081:
+                    break  # 遇到token_id=126081时停止，不包括这条记录
+                filtered_records.append(record)
+            print(f"Filtered records for rollout {rollout_idx + 1} (up to token_id=126081): {len(filtered_records)} tokens")    
+            # 计算置信度
+            token_confidences = [record.get('confidence', 0.0) for record in filtered_records]
+            if token_confidences:
+                avg_confidence = sum(token_confidences) / len(token_confidences)
+            else:
+                avg_confidence = 0.0
+            print(f"Average confidence for rollout {rollout_idx + 1}: {avg_confidence:.4f}")
+            rollouts_confidence.append(avg_confidence)
         
         # Store result
         result = {
             "question": problem,
             "prompt": prompt,
             "rollouts": rollouts,
-            "rollouts_records": rollouts_records,
+            # "rollouts_records": rollouts_records,
+            "rollouts_confidence": rollouts_confidence,
             "solution": solution,
             "answer": extracted_answer
         }
