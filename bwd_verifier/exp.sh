@@ -7,5 +7,5 @@ output=$2
 
 python exp.py "$input" "$output" \
     --strategies vb_alpha vcb_alpha voting_then_vcb \
-    --alpha 0.5 --beta 0.5 --gamma 0.5 \
+    --alpha 0.2 --beta 0.3 --gamma 0.5 \
     --confidence_scale_low 0.9 -n 16 --backward_key "probability"
