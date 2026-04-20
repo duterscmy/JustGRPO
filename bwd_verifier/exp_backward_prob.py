@@ -140,9 +140,9 @@ class BackwardProbabilityVerifier:
                 "key_token_count": key_len,
                 "key_token_probs": correct_probs,
                 "key_token_texts": key_token_texts,
-                "found_question_word": bool(
-                    re.search(r'\b(' + '|'.join(QUESTION_WORDS) + r')\b',
-                              question, re.IGNORECASE)),
+                # "found_question_word": bool(
+                #     re.search(r'\b(' + '|'.join(QUESTION_WORDS) + r')\b',
+                #               question, re.IGNORECASE)),
             }
 
         except Exception as e:
