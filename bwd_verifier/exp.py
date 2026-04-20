@@ -14,7 +14,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.grader import math_equal
 from utils.parser import extract_answer, parse_ground_truth
 
+import signal
 
+def timeout_handler(signum, frame):
+    raise TimeoutError("math_equal timeout")
+
+def safe_math_equal(a, b, timeout=5):
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(timeout)
+    try:
+        result = math_equal(a, b)
+        signal.alarm(0)
+        return result
+    except TimeoutError:
+        return False
+    except Exception:
+        return False
 # ─────────────────────────────────────────────
 # 归一化工具
 # ─────────────────────────────────────────────
@@ -30,7 +45,7 @@ def normalize_answers_in_votes(votes: Dict[str, int]) -> Dict[str, int]:
         for j in range(i + 1, len(answers)):
             if j in used:
                 continue
-            if math_equal(answers[i], answers[j]):
+            if safe_math_equal(answers[i], answers[j]):
                 equiv.append(answers[j])
                 used.add(j)
         rep = max(equiv, key=lambda x: votes.get(x, 0))
@@ -53,7 +68,7 @@ def get_answer_representative(answers: List[str]) -> Dict[str, str]:
     for ans in answers:
         found = False
         for rep in unique:
-            if math_equal(ans, rep):
+            if safe_math_equal(ans, rep):
                 mapping[ans] = rep
                 found = True
                 break
@@ -362,7 +377,7 @@ def evaluate_single(args_tuple):
         'strategy': strategy,
         'selected_answer': selected,
         'ground_truth': gt,
-        'is_correct': math_equal(selected, gt),
+        'is_correct': safe_math_equal(selected, gt),
         'details': info,
     }
 
