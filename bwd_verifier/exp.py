@@ -399,31 +399,61 @@ def evaluate_dataset(dataset: List[Dict],
                      for i, s in enumerate(dataset)]
         t0 = time.time()
 
+        from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeout
+        import concurrent.futures
+
         if sequential:
             raw = [evaluate_single(a) for a in tqdm(args_list, desc=strategy)]
         else:
-            with Pool(workers) as pool:
-                raw = list(tqdm(
-                    pool.imap_unordered(evaluate_single, args_list),
-                    total=len(dataset), desc=strategy, ncols=80))
+            raw = []
+            with ProcessPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(evaluate_single, a): i 
+                        for i, a in enumerate(args_list)}
+                for future in tqdm(concurrent.futures.as_completed(futures), 
+                                total=len(args_list), desc=strategy, ncols=80):
+                    try:
+                        result = future.result(timeout=10)  # 每个样本最多10秒
+                        raw.append(result)
+                    except FuturesTimeout:
+                        idx = futures[future]
+                        print(f"\n⚠️  Sample {idx} timed out, skipping")
+                        raw.append({
+                            'sample_idx': idx,
+                            'strategy': strategy,
+                            'selected_answer': '',
+                            'ground_truth': args_list[idx][2],
+                            'is_correct': False,
+                            'details': {'error': 'timeout'},
+                        })
+                    except Exception as e:
+                        idx = futures[future]
+                        print(f"\n❌ Sample {idx} error: {e}")
+                        raw.append({
+                            'sample_idx': idx,
+                            'strategy': strategy,
+                            'selected_answer': '',
+                            'ground_truth': args_list[idx][2],
+                            'is_correct': False,
+                            'details': {'error': str(e)},
+                        })
 
-        elapsed = time.time() - t0
-        raw.sort(key=lambda x: x['sample_idx'])
-        for r in raw:
-            del r['sample_idx']
+                elapsed = time.time() - t0
+                raw.sort(key=lambda x: x['sample_idx'])
+                for r in raw:
+                    del r['sample_idx']
 
-        correct = sum(1 for r in raw if r['is_correct'])
-        acc = correct / len(dataset) if dataset else 0
-        results[strategy] = {
-            'accuracy': acc,
-            'correct': correct,
-            'total': len(dataset),
-            'elapsed': elapsed,
-            'details': raw,
-        }
-        print(f"{strategy}: {correct}/{len(dataset)} = {acc*100:.2f}%  ({elapsed:.1f}s)")
+                correct = sum(1 for r in raw if r['is_correct'])
+                acc = correct / len(dataset) if dataset else 0
+                results[strategy] = {
+                    'accuracy': acc,
+                    'correct': correct,
+                    'total': len(dataset),
+                    'elapsed': elapsed,
+                    'details': raw,
+                }
+                print(f"{strategy}: {correct}/{len(dataset)} = {acc*100:.2f}%  ({elapsed:.1f}s)")
 
-    return results
+            return results
 
 
 # ─────────────────────────────────────────────
