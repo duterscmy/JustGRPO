@@ -96,16 +96,21 @@ class BackwardProbabilityVerifier:
                 print(f"    suffix:   '{suffix}'")
 
             # 2. tokenize 各部分
-            prefix_ids  = self.lm.tokenizer.encode(prefix,    add_special_tokens=False) if prefix  else []
-            key_ids     = self.lm.tokenizer.encode(key_span,  add_special_tokens=False)
-            suffix_ids  = self.lm.tokenizer.encode(suffix,    add_special_tokens=False) if suffix  else []
-            sep_ids     = self.lm.tokenizer.encode('\n\n',    add_special_tokens=False)
-            asst_ids    = self.lm.tokenizer.encode(assistant, add_special_tokens=False)[:self.max_assistant_tokens]
+            # tokenize 整个问题保证边界一致
+            full_q_ids = self.lm.tokenizer.encode(question, add_special_tokens=False)
+            prefix_ids = self.lm.tokenizer.encode(prefix, add_special_tokens=False) if prefix else []
+            suffix_ids = self.lm.tokenizer.encode(suffix, add_special_tokens=False) if suffix else []
 
+            # 从整体切出 key_ids，避免单独 tokenize 导致边界不对齐
             key_start = len(prefix_ids)
+            key_end   = len(full_q_ids) - len(suffix_ids)
+            key_ids   = full_q_ids[key_start:key_end]
             key_len   = len(key_ids)
 
-            # 3. 构造输入：prefix + [MASK]*key_len + suffix + \n\n + assistant
+            sep_ids  = self.lm.tokenizer.encode('\n\n', add_special_tokens=False)
+            asst_ids = self.lm.tokenizer.encode(assistant, add_special_tokens=False)[:self.max_assistant_tokens]
+
+            # 构造输入：prefix + [MASK]*key_len + suffix + \n\n + assistant
             input_ids = torch.tensor([[
                 *prefix_ids,
                 *([self.lm.mask_token_id] * key_len),

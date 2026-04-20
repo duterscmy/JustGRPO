@@ -22,7 +22,9 @@ mkdir -p logs
 export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-version=2
-input=data/math500_results.add_records.v${version}.json
-output=data/math500_results.add_records.v${version}.backward_probability.json
-python exp_backward_prob.py $input $output -m /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct
+version=1
+input=$1
+output=$2
+python exp_backward_prob.py $input $output \
+    --verbose \
+    -m /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct
