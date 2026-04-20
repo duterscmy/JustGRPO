@@ -435,7 +435,7 @@ def main():
     parser.add_argument('input_file')
     parser.add_argument('output_file')
     parser.add_argument('--strategies', '-s', nargs='+',
-                        default=['majority', 'weighted_confidence',
+                        default=['first','majority', 'weighted_confidence',
                                  'vcb_geometric', 'vcb_alpha',
                                  'voting_then_vcb'],
                         choices=AnswerSelector.STRATEGIES)
