@@ -241,7 +241,7 @@ def main():
                         help='Device to use')
     parser.add_argument('--max_samples', type=int, default=-1,
                         help='Limit number of samples for testing')
-    parser.add_argument('--verbose', action='store_true',
+    parser.add_argument('--verbose', '-v', action='store_true',
                         help='Print detailed debug info')
     args = parser.parse_args()
     
