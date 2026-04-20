@@ -1,14 +1,14 @@
-#!/bin/bash
-#SBATCH --job-name=bwd_verify
-#SBATCH --output=logs/bwd_verify_%j.out
-#SBATCH --error=logs/bwd_verify_%j.err
-#SBATCH --time=24:00:00
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH --partition=a100
+# !/bin/bash
+# SBATCH --job-name=bwd_verify
+# SBATCH --output=logs/bwd_verify_%j.out
+# SBATCH --error=logs/bwd_verify_%j.err
+# SBATCH --time=24:00:00
+# SBATCH --nodes=1
+# SBATCH --ntasks=1
+# SBATCH --gres=gpu:1
+# SBATCH --cpus-per-task=8
+# SBATCH --mem=64G
+# SBATCH --partition=a100
 
 # Create logs directory if it doesn't exist
 mkdir -p logs
