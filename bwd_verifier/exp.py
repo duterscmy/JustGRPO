@@ -453,7 +453,7 @@ def evaluate_dataset(dataset: List[Dict],
                 }
                 print(f"{strategy}: {correct}/{len(dataset)} = {acc*100:.2f}%  ({elapsed:.1f}s)")
 
-            return results
+    return results
 
 
 # ─────────────────────────────────────────────
