@@ -10,4 +10,4 @@ python exp.py "$input" "$output" \
     fobar \
     voting_then_conf voting_then_backward voting_then_vcb \
     --alpha 0.5 --beta 0.3 --gamma 0.2 \
-    --confidence_scale_low 0.9
+    --confidence_scale_low 0.9 --sequential
