@@ -26,5 +26,4 @@ version=1
 input=$1
 output=$2
 python exp_backward_prob.py $input $output \
-    --verbose \
     -m /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct
