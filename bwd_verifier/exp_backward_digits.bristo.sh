@@ -25,4 +25,4 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 version=1
 input=data/math500_results.add_records.v${version}.json
 output=data/math500_results.add_records.v${version}.backward_digits.json
-python exp_backward_digits.py $input $output --verbose
+python exp_backward_digits.py $input $output --verbose -m /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct

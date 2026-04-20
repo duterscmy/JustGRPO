@@ -234,7 +234,7 @@ def main():
     parser = argparse.ArgumentParser(description='Compute backward verification results')
     parser.add_argument('input_file', type=str, help='Input JSON file path')
     parser.add_argument('output_file', type=str, help='Output JSON file path')
-    parser.add_argument('--model_path', type=str,
+    parser.add_argument('--model_path', '-m', type=str,
                         default='/mnt/fast/nobackup/scratch4weeks/mc03002/models/LLaDA-8B-Instruct',
                         help='Path to LLaDA model')
     parser.add_argument('--device', type=str, default='cuda',
