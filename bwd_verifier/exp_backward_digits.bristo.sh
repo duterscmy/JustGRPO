@@ -24,6 +24,6 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 version=1
 input=$1
-output=$2ß
+output=$2
 python exp_backward_digits.py $input $output \
     --only_result -m /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct
