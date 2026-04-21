@@ -105,31 +105,34 @@ def extract_backward_probability_pairs(dataset: List[Dict]) -> List[Tuple[float,
 def bucket_accuracy(pairs: List[Tuple[float, int]],
                     n_buckets: int = 10) -> Tuple[List[str], List[float], List[int]]:
     """
-    按 score 均匀分桶，统计每桶的准确率和样本数。
+    按分位数分桶，确保每桶样本数量大致持平。
     返回 (bucket_labels, accuracies, counts)
     """
     if not pairs:
         return [], [], []
 
-    scores = np.array([p[0] for p in pairs])
-    labels = np.array([p[1] for p in pairs])
+    # 按 score 排序
+    sorted_pairs = sorted(pairs, key=lambda x: x[0])
+    scores = np.array([p[0] for p in sorted_pairs])
+    labels = np.array([p[1] for p in sorted_pairs])
 
-    min_s, max_s = scores.min(), scores.max()
-    # 边界稍微扩一点，防止最大值落在桶外
-    edges = np.linspace(min_s, max_s + 1e-9, n_buckets + 1)
+    # 用 np.array_split 均匀切分，每桶数量尽量持平
+    indices = np.array_split(np.arange(len(sorted_pairs)), n_buckets)
 
     bucket_labels = []
     accuracies = []
     counts = []
 
-    for i in range(n_buckets):
-        lo, hi = edges[i], edges[i + 1]
-        mask = (scores >= lo) & (scores < hi)
-        cnt = mask.sum()
-        acc = labels[mask].mean() * 100 if cnt > 0 else 0.0
+    for idx in indices:
+        if len(idx) == 0:
+            continue
+        bucket_scores = scores[idx]
+        bucket_labels_arr = labels[idx]
+        lo, hi = bucket_scores.min(), bucket_scores.max()
+        acc = bucket_labels_arr.mean() * 100
         bucket_labels.append(f"{lo:.3f}\n–{hi:.3f}")
         accuracies.append(acc)
-        counts.append(int(cnt))
+        counts.append(len(idx))
 
     return bucket_labels, accuracies, counts
 
@@ -176,11 +179,11 @@ def plot_buckets(bucket_labels: List[str],
     ax1.set_title(title, fontsize=13)
 
     # 计算整体 Pearson 相关系数
-    # valid = [(s, l) for s, l in zip(
-    #     [float(b.replace('\n–', '').split('–')[0]) for b in bucket_labels],
-    #     accuracies
-    # ) if counts[bucket_labels.index(b)] > 0
-    #     for b in [bucket_labels[bucket_labels.index(b)]]]
+    valid = [(s, l) for s, l in zip(
+        [float(b.replace('\n–', '').split('–')[0]) for b in bucket_labels],
+        accuracies
+    ) if counts[bucket_labels.index(b)] > 0
+        for b in [bucket_labels[bucket_labels.index(b)]]]
 
     fig.tight_layout()
 
@@ -236,7 +239,7 @@ def main():
                         help='Which metrics to plot')
     parser.add_argument('--n_buckets', type=int, default=10,
                         help='Number of buckets (default: 10)')
-    parser.add_argument('--save_dir', type=str, default="./figs",
+    parser.add_argument('--save_dir', type=str, default=None,
                         help='Directory to save plots (default: show interactively)')
     parser.add_argument('--dataset_name', type=str, default='',
                         help='Dataset name shown in plot title')
