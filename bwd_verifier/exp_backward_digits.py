@@ -113,7 +113,7 @@ class BackwardVerifier:
         return text[:start] + mask_text + text[end:]
     
     def verify_candidate(self, user: str, assistant: str, candidate: str, 
-                         verbose: bool = False) -> Dict[str, Any]:
+                         verbose: bool = False, only_result: bool = False) -> Dict[str, Any]:
         """
         验证单个候选答案
         """
@@ -145,8 +145,10 @@ class BackwardVerifier:
                 masked_user = self._mask_number(user, positions)
                 # 反向输入（限制assistant长度）
                 assistant_short = assistant[:1000] if len(assistant) > 1000 else assistant
-                backward_input = f"{masked_user}\n\n{assistant_short}"
-                
+                if not only_result:
+                    backward_input = f"{masked_user}\n\n{assistant_short}"
+                else:
+                    backward_input = f"{masked_user}\n\nThe answer is {candidate}"
                 if verbose:
                     print(f"        Backward input length: {len(backward_input)} chars")
                 
@@ -243,6 +245,8 @@ def main():
                         help='Limit number of samples for testing')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Print detailed debug info')
+    parser.add_argument('--only_result', action='store_true', default=False,
+                        help='Only use finalresult for backward verification')
     args = parser.parse_args()
     
     # 加载模型
@@ -294,7 +298,7 @@ def main():
             backward_results = []
             for rollout in rollouts:
                 _, answer = parse_ground_truth(rollout)
-                result = verifier.verify_candidate(user, rollout, answer, verbose=args.verbose)
+                result = verifier.verify_candidate(user, rollout, answer, verbose=args.verbose, only_result=args.only_result)
                 backward_results.append(result)
             
             # 添加到样本
