@@ -117,6 +117,7 @@ class AnswerSelector:
     STRATEGIES = [
         'first', 'majority',
         'highest_confidence', 'weighted_confidence', 'confidence_filter',
+        'highest_backward',  # ← 新增
         'vc_arithmetic', 'vc_geometric', 'vc_alpha',
         'vb_arithmetic', 'vb_geometric', 'vb_alpha',
         'vcb_arithmetic', 'vcb_geometric', 'vcb_alpha',
@@ -276,6 +277,19 @@ class AnswerSelector:
                 'threshold': self.confidence_threshold,
                 'filtered_count': len(high),
                 'total': len(answers)
+            }
+        
+        if s == 'highest_backward':
+            backward = self._backward_per_answer(sample, answers_raw, mapping)
+            if not backward:
+                # fallback to majority
+                best = max(voting, key=voting.get)
+                return best, {'strategy': s, 'note': 'no backward, fallback to majority'}
+            best = max(backward, key=backward.get)
+            return best, {
+                'strategy': s,
+                'backward_key': self.backward_key,
+                'backward': backward,
             }
 
         conf_scaled = self._confidence_per_answer(answers, conf_per_rollout, mapping)
