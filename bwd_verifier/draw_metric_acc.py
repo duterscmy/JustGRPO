@@ -236,7 +236,7 @@ def main():
                         help='Which metrics to plot')
     parser.add_argument('--n_buckets', type=int, default=10,
                         help='Number of buckets (default: 10)')
-    parser.add_argument('--save_dir', type=str, default=None,
+    parser.add_argument('--save_dir', type=str, default="./figs",
                         help='Directory to save plots (default: show interactively)')
     parser.add_argument('--dataset_name', type=str, default='',
                         help='Dataset name shown in plot title')
