@@ -176,11 +176,11 @@ def plot_buckets(bucket_labels: List[str],
     ax1.set_title(title, fontsize=13)
 
     # 计算整体 Pearson 相关系数
-    valid = [(s, l) for s, l in zip(
-        [float(b.replace('\n–', '').split('–')[0]) for b in bucket_labels],
-        accuracies
-    ) if counts[bucket_labels.index(b)] > 0
-        for b in [bucket_labels[bucket_labels.index(b)]]]
+    # valid = [(s, l) for s, l in zip(
+    #     [float(b.replace('\n–', '').split('–')[0]) for b in bucket_labels],
+    #     accuracies
+    # ) if counts[bucket_labels.index(b)] > 0
+    #     for b in [bucket_labels[bucket_labels.index(b)]]]
 
     fig.tight_layout()
 
