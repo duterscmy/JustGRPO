@@ -244,7 +244,7 @@ def train(config: TrainConfig):
                 accelerator.unwrap_model(model).save_pretrained(
                     save_path, state_dict=state_dict, safe_serialization=True
                 )
-            print(f"Saved checkpoint to {save_path}")
+                print(f"Saved checkpoint to {save_path}")
         accelerator.wait_for_everyone()
     
     print("\nTraining complete!")
