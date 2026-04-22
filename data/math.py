@@ -190,6 +190,7 @@ def reward_ttrl(batch, responses, num_generations, device, confidences=None):
     Returns:
         Tensor of rewards (1.0 for matching weighted-majority vote, 0.0 otherwise)
     """
+    print("confidences {}".format(confidences))
     from collections import defaultdict
  
     ground_truth_cot = list(batch['answers'])[0]
