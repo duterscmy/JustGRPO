@@ -138,6 +138,55 @@ def sample_with_repeat_rank(model, batch, tokenizer, device, reward_fn=None, num
         }
 
 
+@torch.no_grad()
+def sample_with_weighted_confidence(model, batch, tokenizer, device, reward_fn=None, num_generations=1, temperature=1., steps=256, gen_length=256, repeat_time=1, block_size=1):
+    prompts = tokenizer.apply_chat_template([[{"role": "user", "content": p}] for p in batch['problems']],
+                                            add_generation_prompt=True, tokenize=False)
+    prompt_ids = tokenizer(prompts, return_tensors='pt', padding=True)['input_ids'].to(device)
+
+    generate_ids_list = []
+    print("=======block size:{}======".format(block_size))
+
+    batch_size = prompt_ids.shape[0]
+
+    for _ in range(repeat_time):
+        repeated_prompt_ids = prompt_ids.repeat(num_generations, 1)
+        generated_ids, ave_conf_list = generate_with_confidence(
+            model=model,
+            prompt=repeated_prompt_ids,
+            steps=steps,
+            gen_length=gen_length,
+            temperature=temperature,
+            block_length=block_size
+        )
+        avg_len = (generated_ids != 126081).sum(dim=-1).float().mean()
+        print(f"avg_gen_length: {avg_len:.1f}")
+        for i in range(len(ave_conf_list)):
+            generate_ids_list.append((generated_ids[i], ave_conf_list[i]))
+
+    print("confidence list:", [x[1] for x in generate_ids_list])
+
+    if generate_ids_list:
+        all_generated_ids = torch.stack([x[0] for x in generate_ids_list])
+        all_confidences = [x[1] for x in generate_ids_list]
+        print(all_generated_ids.size())
+        responses = tokenizer.batch_decode(all_generated_ids, skip_special_tokens=True)
+
+        return {
+            'generated_ids': all_generated_ids,
+            'prompt_len': prompt_ids.shape[1],
+            'rewards': reward_fn(
+                batch, responses, num_generations * repeat_time, device,
+                confidences=all_confidences
+            ).float() if reward_fn else None,
+        }
+    else:
+        return {
+            'generated_ids': torch.tensor([]),
+            'prompt_len': prompt_ids.shape[1],
+            'rewards': None,
+        }
+
 def logprob_loss(model, inputs, valid_samples, eps=0.2, gain=1.0, temperature=1., accelerator=None,
                  gen_length=256, mask_id=126336):
     advantages, generated_ids, prompt_len = inputs['advantages'], inputs['generated_ids'], inputs['prompt_len']

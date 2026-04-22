@@ -173,40 +173,48 @@ def reward_ttrl_old(batch, responses, num_generations, device):
     return rewards
 
 
-def reward_ttrl(batch, responses, num_generations, device):
+def reward_ttrl(batch, responses, num_generations, device, confidences=None):
     """
-    Compute reward for GSM8K responses using TTRL's majority voting method.
+    Compute reward for responses using TTRL's majority voting method.
+    Supports confidence-weighted voting when confidences are provided.
     
     Args:
-        batch: Batch containing problems (but NOT using ground truth answers for reward)
-        responses: Model generated responses
+        batch:           Batch containing problems and answers
+        responses:       Model generated responses (length = num_problems * num_generations)
         num_generations: Number of generations per problem
-        device: Torch device
-        math_equal: Function to check if two answers are mathematically equivalent.
-                    If None, falls back to exact string matching.
+        device:          Torch device
+        confidences:     Optional List[float], length = len(responses).
+                         If provided, uses confidence-weighted voting instead of majority voting.
+                         If None, falls back to uniform majority voting.
     
     Returns:
-        Tensor of rewards (+1 for matching majority vote, -1 for not matching)
+        Tensor of rewards (1.0 for matching weighted-majority vote, 0.0 otherwise)
     """
     from collections import defaultdict
-    
+ 
     ground_truth_cot = list(batch['answers'])[0]
     if "####" in ground_truth_cot:
         answer = extract_answer_gsm8k(ground_truth_cot)
     else:
         answer = parse_ground_truth(ground_truth_cot)[1]
-
+ 
     print("======correct answer: {}======".format(answer))
+ 
     num_problems = len(responses) // num_generations
     rewards = torch.zeros(len(responses), device=device)
-    
+ 
     for problem_idx in range(num_problems):
-        # 获取当前问题的所有生成结果
         start_idx = problem_idx * num_generations
         end_idx = start_idx + num_generations
         problem_responses = responses[start_idx:end_idx]
-        
-        # 提取所有答案
+ 
+        # 当前问题的 confidence（没有则等权）
+        if confidences is not None:
+            problem_confs = confidences[start_idx:end_idx]
+        else:
+            problem_confs = [1.0] * num_generations
+ 
+        # ── 提取答案 ──────────────────────────────────
         print("============ROLLOUT==========")
         extracted_answers_raw = []
         for resp in problem_responses:
@@ -215,18 +223,16 @@ def reward_ttrl(batch, responses, num_generations, device):
             print(resp)
             print(ans)
             print("==================")
-        
-        # ========== 基于 math_equal 进行答案归一化 ==========
-        # 收集所有唯一的原始答案
+ 
+        # ── 答案归一化（math_equal 等价类） ────────────
         unique_answers = []
         for ans in extracted_answers_raw:
             if ans not in unique_answers:
                 unique_answers.append(ans)
-        
-        # 建立等价关系
-        canonical_representatives = []  # 每个等价类的代表元
-        ans_to_canonical = {}           # 原始答案 -> 规范答案
-        
+ 
+        canonical_representatives = []
+        ans_to_canonical = {}
+ 
         for ans in unique_answers:
             found = False
             for rep in canonical_representatives:
@@ -237,55 +243,66 @@ def reward_ttrl(batch, responses, num_generations, device):
             if not found:
                 canonical_representatives.append(ans)
                 ans_to_canonical[ans] = ans
-        
-        # 归一化答案列表
+ 
         normalized_answers = [ans_to_canonical[ans] for ans in extracted_answers_raw]
-        
-        # 同时归一化 ground truth answer
-        # 找到与 answer 等价的规范答案
+ 
+        # 归一化 ground truth
         normalized_answer = answer
         for rep in canonical_representatives:
             if math_equal(answer, rep):
                 normalized_answer = rep
                 break
-        
-        # 对归一化后的答案进行投票
-        if normalized_answers:
-            # 统计归一化后的答案
-            counter = defaultdict(int)
-            for norm_ans in normalized_answers:
-                counter[norm_ans] += 1
-            
-            # 找出出现频率最高的答案
-            majority_norm_answer = max(counter.items(), key=lambda x: x[1])[0]
-            majority_answer = majority_norm_answer
-            
-            # 计算多样性统计
-            distinct_answer_num_norm = len(counter)
-            all_answer_num = len(extracted_answers_raw)
-            distinct_answer_ratio = distinct_answer_num_norm / all_answer_num
-            best_answer_ratio = counter[majority_norm_answer] / all_answer_num
-            
-            # 计算正确答案数量：直接比较归一化后的答案
-            correct_answer_number = sum(1 for norm_ans in normalized_answers if norm_ans == normalized_answer)
-            
-            # 判断最佳答案是否等于正确答案
-            best_is_correct = 1 if majority_norm_answer == normalized_answer else 0
-            
-            print(f"==========MAJORITY: {majority_answer} (norm)===========")
-            
-            # 输出多样性统计
-            print(f"diversity| distinct_answer_num: {distinct_answer_num_norm} | all_answer_num: {all_answer_num} | distinct_answer_ratio: {distinct_answer_ratio:.2f} | best_answer_ratio: {best_answer_ratio:.2f} | correct_answer_number: {correct_answer_number} | best_is_correct: {best_is_correct} | extracted_answers: {extracted_answers_raw} | normalized_answers: {normalized_answers} | majority_answer: {majority_answer} | ground_truth_answer: {answer}", flush=True)
-
-            # 根据是否匹配多数投票结果分配奖励
-            for i, norm_ans in enumerate(normalized_answers):
-                if norm_ans == majority_norm_answer:
-                    rewards[start_idx + i] = 1.0
-                # else:
-                #     rewards[start_idx + i] = -1.0
-    
+ 
+        if not normalized_answers:
+            continue
+ 
+        # ── Confidence 加权投票 ────────────────────────
+        # confidences 为 None 时 problem_confs 全为 1.0，等价于原始多数投票
+        weighted_counter = defaultdict(float)
+        count_counter = defaultdict(int)
+        for norm_ans, conf in zip(normalized_answers, problem_confs):
+            weighted_counter[norm_ans] += conf
+            count_counter[norm_ans] += 1
+ 
+        majority_norm_answer = max(weighted_counter.items(), key=lambda x: x[1])[0]
+        majority_answer = majority_norm_answer
+ 
+        # ── 统计信息 ──────────────────────────────────
+        all_answer_num = len(extracted_answers_raw)
+        distinct_answer_num_norm = len(weighted_counter)
+        distinct_answer_ratio = distinct_answer_num_norm / all_answer_num
+        best_answer_ratio = count_counter[majority_norm_answer] / all_answer_num
+        correct_answer_number = sum(
+            1 for norm_ans in normalized_answers if norm_ans == normalized_answer)
+        best_is_correct = 1 if majority_norm_answer == normalized_answer else 0
+ 
+        using_weighted = confidences is not None
+        print(f"==========MAJORITY: {majority_answer} "
+              f"({'weighted' if using_weighted else 'uniform'})===========")
+        if using_weighted:
+            print(f"confidence weights: {[round(c, 4) for c in problem_confs]}")
+            print(f"weighted scores: {dict(weighted_counter)}")
+ 
+        print(
+            f"diversity| distinct_answer_num: {distinct_answer_num_norm} | "
+            f"all_answer_num: {all_answer_num} | "
+            f"distinct_answer_ratio: {distinct_answer_ratio:.2f} | "
+            f"best_answer_ratio: {best_answer_ratio:.2f} | "
+            f"correct_answer_number: {correct_answer_number} | "
+            f"best_is_correct: {best_is_correct} | "
+            f"extracted_answers: {extracted_answers_raw} | "
+            f"normalized_answers: {normalized_answers} | "
+            f"majority_answer: {majority_answer} | "
+            f"ground_truth_answer: {answer}",
+            flush=True
+        )
+ 
+        # ── 分配 reward ────────────────────────────────
+        for i, norm_ans in enumerate(normalized_answers):
+            if norm_ans == majority_norm_answer:
+                rewards[start_idx + i] = 1.0
+ 
     return rewards
-
 
 def reward_ttrl_arc(batch, responses, num_generations, device):
     """

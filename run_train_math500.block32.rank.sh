@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name="train_math8"
+#SBATCH --job-name="train_math"
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:4                # 请求4块GPU
+#SBATCH --gres=gpu:4
 #SBATCH --time=24:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
@@ -14,14 +14,17 @@ conda activate ttrl
 t=0.6
 block=32
 lr=5e-6
-output_dir=./checkpoints_math500_num_generation8_block${block}_t${t}_lr${lr}_rank_16_8_v2
+max_level=3
+output_dir=./checkpoints_math500_num_generation16_block${block}_t${t}_lr${lr}_level1_${max_level}_0422_batch32_weighted_confidence
 
-#   --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_t0.3/training-state-000005 \
+#   --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_block1_t0.6_lr1e-6/training-state-000005 \
 
 mkdir -p $output_dir
-accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_math500.rank.py \
+accelerate launch --num_processes 1 --main_process_ip localhost --config_file configs/fsdp.yaml train_math500.py \
   --run_dir $output_dir \
   --temperature ${t} \
   --lr $lr \
   --block_size $block \
-  --grad_accum 16 >> $output_dir.log 2>&1
+  --max_level $max_level \
+  --total_steps 10 --save_every 5 \
+  --grad_accum 1 #>> $output_dir.log 2>&1

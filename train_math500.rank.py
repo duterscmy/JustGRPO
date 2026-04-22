@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import utils.distributed as dist
-from grpo import sample, sample_with_repeat_rank,logprob_loss, compute_group_advantages
+from grpo import sample, sample_with_weighted_confidence,logprob_loss, compute_group_advantages
 
 
 
@@ -21,7 +21,7 @@ class TrainConfig:
     # --- Training ---
     batch_size_per_device: int = 1
     grad_accumulation: int = 8
-    total_steps: int = 5
+    total_steps: int = 10
     learning_rate: float = 1e-6
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
@@ -33,6 +33,7 @@ class TrainConfig:
     gen_length: int = 256
     temperature: float = 0.6
     block_size: int = 1
+    max_level: int = 3
 
     # --- Misc ---
     output_dir: str = "./checkpoints_math500_num_generation{}".format(num_generations)
@@ -97,6 +98,7 @@ def train(config: TrainConfig):
         split='test',
         batch_size=config.batch_size_per_device,
         num_workers=4,
+        max_level=config.max_level,
     )
     
     # --- Optimizer ---
@@ -160,7 +162,7 @@ def train(config: TrainConfig):
                     inputs_chunks = []
                     print("use temperature: {}".format(config.temperature))
                     for _ in range(config.repeat_times):
-                        inputs = sample_with_repeat_rank(
+                        inputs = sample_with_weighted_confidence(
                             model=model,
                             batch=batch,
                             tokenizer=tokenizer,
@@ -178,9 +180,9 @@ def train(config: TrainConfig):
 
                     # --- Compute Advantages ---
                     rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
-                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times * config.sample_repeat_times // 2)
+                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times * config.sample_repeat_times)
                     valid_samples = (advantages != 0).sum()
-                    split_advantages = advantages.split(config.num_generations*config.sample_repeat_times // 2, dim=0)
+                    split_advantages = advantages.split(config.num_generations*config.sample_repeat_times, dim=0)
                     for chunk, adv in zip(inputs_chunks, split_advantages):
                         chunk["advantages"] = adv
                     
@@ -195,6 +197,7 @@ def train(config: TrainConfig):
                             inputs=inputs,
                             valid_samples=valid_samples,
                             gain=1.0,
+                            temperature=config.temperature,
                             accelerator=accelerator,
                             gen_length=config.gen_length,
                         )
@@ -233,8 +236,9 @@ def train(config: TrainConfig):
         # --- Save checkpoint ---
         if (step + 1) % config.save_every == 0:
             state_dict = accelerator.get_state_dict(model)
-            save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
-            accelerator.save_state(save_path)
+            if (step + 1) == config.total_steps:
+                save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
+                accelerator.save_state(save_path)
             if rank == 0:
                 save_path = os.path.join(config.output_dir, f'ckpt-{step+1:06d}')
                 accelerator.unwrap_model(model).save_pretrained(
@@ -256,6 +260,9 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=5e-6,  help="lr")
     parser.add_argument("--block_size", type=int, default=1, help="Generate Block Size")
     parser.add_argument("--only_rollout", type=int, default=0)
+    parser.add_argument("--max_level", type=int, default=3, help="Maximum difficulty level to train on")
+    parser.add_argument("--total_steps", type=int, default=50, help="Total training steps")
+    parser.add_argument("--save_every", type=int, default=5, help="Save checkpoint every N steps")
     
     return parser.parse_args()
 
@@ -271,7 +278,10 @@ if __name__ == "__main__":
         temperature= args.temperature,
         learning_rate= args.lr,
         block_size=args.block_size,
-        only_rollout=args.only_rollout
+        only_rollout=args.only_rollout,
+        max_level=args.max_level,
+        total_steps=args.total_steps,
+        save_every=args.save_every,
     )
 
     train(config)
