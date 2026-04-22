@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import utils.distributed as dist
-from grpo import sample, sample_with_repeat, logprob_loss, compute_group_advantages
+from grpo import sample, sample_with_weighted_confidence, logprob_loss, compute_group_advantages
 
 
 
@@ -157,7 +157,7 @@ def train(config: TrainConfig):
                     inputs_chunks = []
                     
                     for _ in range(config.repeat_times):
-                        inputs = sample_with_repeat(
+                        inputs = sample_with_weighted_confidence(
                             model=model,
                             batch=batch,
                             tokenizer=tokenizer,
