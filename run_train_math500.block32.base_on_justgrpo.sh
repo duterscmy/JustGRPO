@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name="train_math"
+#SBATCH --job-name="train_math_justgrpo"
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:4
