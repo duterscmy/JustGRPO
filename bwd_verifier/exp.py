@@ -118,6 +118,7 @@ class AnswerSelector:
         'first', 'majority',
         'highest_confidence', 'weighted_confidence', 'confidence_filter',
         'highest_backward',  # ← 新增
+        'confidence_top_half',
         'vc_arithmetic', 'vc_geometric', 'vc_alpha',
         'vb_arithmetic', 'vb_geometric', 'vb_alpha',
         'vcb_arithmetic', 'vcb_geometric', 'vcb_alpha',
@@ -277,6 +278,33 @@ class AnswerSelector:
                 'threshold': self.confidence_threshold,
                 'filtered_count': len(high),
                 'total': len(answers)
+            }
+        
+        if s == 'confidence_top_half':
+            if not conf_per_rollout or all(c == 0 for c in conf_per_rollout):
+                # 没有 confidence 信息，fallback 到 majority
+                best = max(voting, key=voting.get)
+                return best, {'strategy': s, 'note': 'no confidence, fallback to majority'}
+
+            # 按 confidence 排序，取前50%
+            n = len(answers)
+            top_k = max(1, n // 2)
+            sorted_indices = sorted(range(n), key=lambda i: conf_per_rollout[i], reverse=True)
+            top_indices = sorted_indices[:top_k]
+            top_answers = [answers[i] for i in top_indices]
+
+            # 在 top_answers 里做多数投票
+            cnt = Counter(top_answers)
+            norm = normalize_answers_in_votes(dict(cnt))
+            best = max(norm, key=norm.get)
+
+            return best, {
+                'strategy': s,
+                'top_k': top_k,
+                'total': n,
+                'top_confidences': [conf_per_rollout[i] for i in top_indices],
+                'top_answers': top_answers,
+                'vote_counts': dict(cnt),
             }
         
         if s == 'highest_backward':
