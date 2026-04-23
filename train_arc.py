@@ -227,14 +227,15 @@ def train(config: TrainConfig):
         # --- Save checkpoint ---
         if (step + 1) % config.save_every == 0:
             state_dict = accelerator.get_state_dict(model)
-            save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
-            accelerator.save_state(save_path)
+            if (step + 1) == config.total_steps:
+                save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
+                accelerator.save_state(save_path)
             if rank == 0:
                 save_path = os.path.join(config.output_dir, f'ckpt-{step+1:06d}')
                 accelerator.unwrap_model(model).save_pretrained(
                     save_path, state_dict=state_dict, safe_serialization=True
                 )
-            print(f"Saved checkpoint to {save_path}")
+                print(f"Saved checkpoint to {save_path}")
         accelerator.wait_for_everyone()
     
     print("\nTraining complete!")
