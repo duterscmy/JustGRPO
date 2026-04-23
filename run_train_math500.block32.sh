@@ -15,16 +15,17 @@ t=0.6
 block=32
 lr=5e-6
 max_level=3
-output_dir=./checkpoints_math500_num_generation16_block${block}_t${t}_lr${lr}_level1_${max_level}_0422_batch32
+output_dir=./checkpoints_math500_num_generation8_block${block}_t${t}_lr${lr}_level1_${max_level}_0422_batch64_continue
 
 #   --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_block1_t0.6_lr1e-6/training-state-000005 \
 
 mkdir -p $output_dir
 accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_math500.py \
+  --model_path /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation16_block32_t0.6_lr5e-6_level1_3_0422_batch32/ckpt-000004 \
   --run_dir $output_dir \
   --temperature ${t} \
   --lr $lr \
   --block_size $block \
   --max_level $max_level \
-  --total_steps 10 --save_every 2 \
-  --grad_accum 8 >> $output_dir.log 2>&1
+  --total_steps 5 --save_every 1 \
+  --grad_accum 16 >> $output_dir.log 2>&1
