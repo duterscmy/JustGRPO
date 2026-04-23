@@ -225,8 +225,8 @@ def train(config: TrainConfig):
         
         # --- Save checkpoint ---
         if (step + 1) % config.save_every == 0:
+            state_dict = accelerator.get_state_dict(model)
             if step + 1 == config.total_steps:
-                state_dict = accelerator.get_state_dict(model)
                 save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
                 accelerator.save_state(save_path)
             if rank == 0:
