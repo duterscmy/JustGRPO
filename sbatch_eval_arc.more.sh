@@ -26,16 +26,17 @@ base_name=$(basename "$clean_path")
 target_dir="eval_results/${parent_dir}"
 mkdir -p "$target_dir"
 
+length=$2
+block=$3
+temperature=0.0
 # 4. 拼接最终的日志路径
-result_path="${target_dir}/${base_name}.arc"
-log_path="${target_dir}/${base_name}.arc.log"
+result_path="${target_dir}/${base_name}.arc.${length}.${block}"
+log_path="${target_dir}/${base_name}.arc.${length}.${block}.log"
 
 echo "Logging to: $log_path"
 
 # 设置参数
-length=$2
-block=$3
-temperature=0.0
+
 
 # 运行评估
 accelerate launch --num_processes 1 eval_llada.py \
