@@ -14,7 +14,7 @@ conda activate ttrl
 block=32
 t=1.0
 lr=5e-6
-output_dir=./checkpoints_gsm8k_num_generation8_test_block${block}_temperature${t}_lr${lr}_0418
+output_dir=./checkpoints_gsm8k_num_generation8_test_block${block}_temperature${t}_lr${lr}_0423
 mkdir -p $output_dir
 
 #--resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/training-state-000028
@@ -24,6 +24,5 @@ accelerate launch --num_processes 4 --main_process_ip localhost --config_file co
   --block_size 32 \
   --lr $lr  \
   --temperature 1.0 \
-  --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_gsm8k_num_generation8_test_block32_temperature1.0_lr5e-6_0418/training-state-000020 \
-  --total_steps 30 --save_every 5 \
+  --total_steps 10 --save_every 5 \
   --grad_accum 16 >> $output_dir.log 2>&1
