@@ -1,7 +1,7 @@
 input=$1
 base=$(basename "$input" .json)
 python draw_metric_acc.py "$input" \
-    --metrics confidence backward_digits backward_probability \
-    --n_buckets 10 \
-    --save_dir "${base}_fig" \
-    --dataset_name "$base"
+    --metric confidence\
+    --n_buckets 6 \
+    --save_path "${base}_fig" \
+    --dataset_names MATH500

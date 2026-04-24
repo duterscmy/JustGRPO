@@ -2,15 +2,16 @@ import json
 import argparse
 import numpy as np
 import matplotlib
+
 matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial']
 matplotlib.rcParams['axes.unicode_minus'] = False
 import matplotlib.pyplot as plt
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 import sys, os
 import re
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.grader import math_equal
+# from utils.grader import math_equal
 from utils.parser import parse_ground_truth
 
 
@@ -39,7 +40,8 @@ def extract_confidence_pairs(dataset: List[Dict]) -> List[Tuple[float, int]]:
         for rollout, conf in zip(rollouts, confs):
             _, ans = parse_ground_truth(rollout)
             try:
-                correct = int(math_equal(ans, gt))
+                # correct = int(math_equal(ans, gt))
+                correct = int(ans.strip() == gt.strip())
             except Exception:
                 correct = 0
             pairs.append((float(conf), correct))
@@ -63,7 +65,8 @@ def extract_backward_digits_pairs(dataset: List[Dict]) -> List[Tuple[float, int]
                 continue
             _, ans = parse_ground_truth(rollout)
             try:
-                correct = int(math_equal(ans, gt))
+                # correct = int(math_equal(ans, gt))
+                correct = int(ans.strip() == gt.strip())
             except Exception:
                 correct = 0
             pairs.append((float(score), correct))
@@ -91,7 +94,8 @@ def extract_backward_probability_pairs(dataset: List[Dict]) -> List[Tuple[float,
                 continue
             _, ans = parse_ground_truth(rollout)
             try:
-                correct = int(math_equal(ans, gt))
+                # correct = int(math_equal(ans, gt))
+                correct = int(ans.strip() == gt.strip())
             except Exception:
                 correct = 0
             pairs.append((float(score), correct))
@@ -99,17 +103,17 @@ def extract_backward_probability_pairs(dataset: List[Dict]) -> List[Tuple[float,
 
 
 # ─────────────────────────────────────────────
-# 分桶 + 统计
+# 分桶 + 统计 (默认 6 个桶)
 # ─────────────────────────────────────────────
 
 def bucket_accuracy(pairs: List[Tuple[float, int]],
-                    n_buckets: int = 10) -> Tuple[List[str], List[float], List[int]]:
+                    n_buckets: int = 6) -> Tuple[List[str], List[float], List[int], List[float]]:
     """
     按分位数分桶，确保每桶样本数量大致持平。
-    返回 (bucket_labels, accuracies, counts)
+    返回 (bucket_labels, accuracies, counts, bucket_centers)
     """
     if not pairs:
-        return [], [], []
+        return [], [], [], []
 
     # 按 score 排序
     sorted_pairs = sorted(pairs, key=lambda x: x[0])
@@ -122,6 +126,7 @@ def bucket_accuracy(pairs: List[Tuple[float, int]],
     bucket_labels = []
     accuracies = []
     counts = []
+    bucket_centers = []  # 用于趋势线
 
     for idx in indices:
         if len(idx) == 0:
@@ -130,99 +135,170 @@ def bucket_accuracy(pairs: List[Tuple[float, int]],
         bucket_labels_arr = labels[idx]
         lo, hi = bucket_scores.min(), bucket_scores.max()
         acc = bucket_labels_arr.mean() * 100
-        bucket_labels.append(f"{lo:.3f}\n–{hi:.3f}")
+        
+        # 左闭右开区间格式
+        bucket_labels.append(f"[{lo:.3f}, {hi:.3f})")
         accuracies.append(acc)
         counts.append(len(idx))
+        # 使用区间中点作为趋势线的 x 坐标
+        bucket_centers.append((lo + hi) / 2)
 
-    return bucket_labels, accuracies, counts
+    return bucket_labels, accuracies, counts, bucket_centers
 
 
 # ─────────────────────────────────────────────
 # 绘图
 # ─────────────────────────────────────────────
 
-def plot_buckets(bucket_labels: List[str],
-                 accuracies: List[float],
-                 counts: List[int],
-                 metric_name: str,
-                 save_path: str = None,
-                 dataset_name: str = ''):
-    fig, ax1 = plt.subplots(figsize=(12, 5))
+def plot_single_ax(ax, bucket_labels: List[str],
+                   accuracies: List[float],
+                   counts: List[int],
+                   bucket_centers: List[float],
+                   title: str):
+    """
+    在指定的 ax 上绘制柱状图 + 趋势折线
+    """
+    if not bucket_labels:
+        ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
+        return
 
     x = np.arange(len(bucket_labels))
-    bars = ax1.bar(x, accuracies, color='steelblue', alpha=0.8, width=0.6)
+    
+    # 柱状图
+    bars = ax.bar(x, accuracies, color="#1579C0", alpha=0.8, width=0.6, 
+                  edgecolor='white', linewidth=0.5, zorder=2)
 
-    ax1.set_xlabel(f'{metric_name} bucket', fontsize=12)
-    ax1.set_ylabel('Accuracy (%)', fontsize=12, color='steelblue')
-    ax1.tick_params(axis='y', labelcolor='steelblue')
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(bucket_labels, fontsize=8)
-    ax1.set_ylim(0, 110)
+    # 趋势折线
+    ax.plot(x, accuracies, color='#E67E22', marker='o', markersize=5, 
+            linewidth=2, linestyle='-', zorder=3, label='Trend')
+
+    # 坐标轴标签
+    ax.set_xlabel('Rollout confidence', fontsize=14)
+    ax.set_ylabel('Accuracy (%)', fontsize=14)
+    ax.set_xticks(x)
+    # 横坐标不倾斜，水平显示
+    ax.set_xticklabels(bucket_labels, fontsize=10, rotation=0, ha='center')
+    
+    # 纵坐标范围
+    y_min = max(0, min(accuracies) - 8)
+    y_max = min(105, max(accuracies) + 8)
+    if y_max - y_min < 30:
+        y_min = max(0, y_min - 10)
+        y_max = min(105, y_max + 10)
+    ax.set_ylim(y_min, y_max)
 
     # 在柱子上方显示准确率
+    y_offset = (y_max - y_min) * 0.02
     for bar, acc, cnt in zip(bars, accuracies, counts):
         if cnt > 0:
-            ax1.text(bar.get_x() + bar.get_width() / 2,
-                     bar.get_height() + 1.5,
-                     f'{acc:.1f}%',
-                     ha='center', va='bottom', fontsize=8, color='steelblue')
+            ax.text(bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + y_offset,
+                    f'{acc:.1f}%',
+                    ha='center', va='bottom', fontsize=12, 
+                    color='#E67E22', fontweight='medium')
 
-    # 右轴显示样本数
-    ax2 = ax1.twinx()
-    ax2.plot(x, counts, 'o--', color='coral', linewidth=1.5, markersize=5, label='count')
-    ax2.set_ylabel('Sample count', fontsize=12, color='coral')
-    ax2.tick_params(axis='y', labelcolor='coral')
+    # 轻微网格线
+    ax.yaxis.grid(True, linestyle='--', alpha=0.3, color='#CCCCCC', zorder=0)
+    ax.set_axisbelow(True)
 
-    title = f'{metric_name} vs Accuracy'
-    if dataset_name:
-        title += f'  [{dataset_name}]'
-    ax1.set_title(title, fontsize=13)
+    # 去掉顶部和右侧 spines
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color('#333333')
+    ax.spines['bottom'].set_color('#333333')
+    
+    # 标题和图例
+    ax.set_title(title, fontsize=11, fontweight='medium')
+    ax.legend(loc='lower right', fontsize=8)
 
-    # 计算整体 Pearson 相关系数
-    # valid = [(s, l) for s, l in zip(
-    #     [float(b.replace('\n–', '').split('–')[0]) for b in bucket_labels],
-    #     accuracies
-    # ) if counts[bucket_labels.index(b)] > 0
-    #     for b in [bucket_labels[bucket_labels.index(b)]]]
 
+def plot_multiple_metrics(input_files: List[str],
+                          metric_name: str,
+                          n_buckets: int,
+                          save_path: Optional[str],
+                          dataset_names: Optional[List[str]] = None):
+    """
+    为多个 JSON 文件绘制同一指标的对比图
+    """
+    n_files = len(input_files)
+    
+    # 自动确定子图布局
+    if n_files == 1:
+        n_rows, n_cols = 1, 1
+        figsize = (8, 4)
+    elif n_files == 2:
+        n_rows, n_cols = 1, 2
+        figsize = (14, 5)
+    elif n_files <= 4:
+        n_rows, n_cols = 2, 2
+        figsize = (14, 10)
+    else:
+        n_rows = (n_files + 2) // 3
+        n_cols = 3
+        figsize = (15, 5 * n_rows)
+    
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
+    
+    # 确保 axes 是一维数组
+    if n_rows == 1 and n_cols == 1:
+        axes = [axes]
+    else:
+        axes = axes.flatten()
+    
+    # 隐藏多余的子图
+    for i in range(n_files, len(axes)):
+        axes[i].set_visible(False)
+    
+    # 为每个文件绘图
+    for idx, (input_file, ax) in enumerate(zip(input_files, axes)):
+        print(f"\nProcessing {input_file} ...")
+        with open(input_file, 'r', encoding='utf-8') as f:
+            dataset = json.load(f)
+        print(f"  Loaded {len(dataset)} samples")
+        
+        # 提取数据
+        extractor_map = {
+            'confidence': extract_confidence_pairs,
+            'backward_digits': extract_backward_digits_pairs,
+            'backward_probability': extract_backward_probability_pairs,
+        }
+        
+        pairs = extractor_map[metric_name](dataset)
+        print(f"  → {len(pairs)} rollout pairs extracted")
+        
+        if not pairs:
+            ax.text(0.5, 0.5, f'No data\n{os.path.basename(input_file)}', 
+                    ha='center', va='center', transform=ax.transAxes)
+            continue
+        
+        # 计算统计信息
+        scores = [p[0] for p in pairs]
+        labels = [p[1] for p in pairs]
+        corr = np.corrcoef(scores, labels)[0, 1]
+        overall_acc = np.mean(labels) * 100
+        
+        print(f"  overall_acc={overall_acc:.2f}%, Pearson_r={corr:.4f}")
+        
+        # 分桶
+        bucket_labels, accuracies, counts, bucket_centers = bucket_accuracy(pairs, n_buckets)
+        
+        # 标题：使用文件名或自定义名称
+        if dataset_names and idx < len(dataset_names):
+            title = dataset_names[idx]
+        else:
+            title = os.path.basename(input_file).replace('.json', '').replace('_', ' ')
+        
+        # 绘图
+        plot_single_ax(ax, bucket_labels, accuracies, counts, bucket_centers, title)
+    
     fig.tight_layout()
-
+    
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
-        print(f"Saved: {save_path}")
+        plt.savefig(f"{save_path}/{metric_name}.png", dpi=200, bbox_inches='tight', facecolor='white')
+        print(f"\nSaved: {save_path}")
     else:
         plt.show()
     plt.close()
-
-
-def plot_all_metrics(pairs_dict: Dict[str, List[Tuple[float, int]]],
-                     n_buckets: int,
-                     save_dir: str,
-                     dataset_name: str):
-    """为每个指标单独画图，并输出 Pearson 相关系数"""
-    for metric_name, pairs in pairs_dict.items():
-        if not pairs:
-            print(f"[{metric_name}] No data, skipping.")
-            continue
-
-        scores = [p[0] for p in pairs]
-        labels = [p[1] for p in pairs]
-
-        # Pearson 相关系数
-        corr = np.corrcoef(scores, labels)[0, 1]
-        print(f"[{metric_name}] n={len(pairs)}, "
-              f"mean_score={np.mean(scores):.4f}, "
-              f"overall_acc={np.mean(labels)*100:.2f}%, "
-              f"Pearson_r={corr:.4f}")
-
-        bucket_labels, accuracies, counts = bucket_accuracy(pairs, n_buckets)
-
-        fname = metric_name.replace(' ', '_').replace('/', '_') + '.png'
-        save_path = os.path.join(save_dir, fname) if save_dir else None
-        plot_buckets(bucket_labels, accuracies, counts,
-                     metric_name=metric_name,
-                     save_path=save_path,
-                     dataset_name=dataset_name)
 
 
 # ─────────────────────────────────────────────
@@ -232,44 +308,25 @@ def plot_all_metrics(pairs_dict: Dict[str, List[Tuple[float, int]]],
 def main():
     parser = argparse.ArgumentParser(
         description='Plot score-vs-accuracy correlation for confidence/backward metrics')
-    parser.add_argument('input_file', help='Input JSON file')
-    parser.add_argument('--metrics', '-m', nargs='+',
-                        default=['confidence', 'backward_digits', 'backward_probability'],
+    parser.add_argument('input_files', nargs='+', help='Input JSON file(s)')
+    parser.add_argument('--metric', '-m', type=str, default='confidence',
                         choices=['confidence', 'backward_digits', 'backward_probability'],
-                        help='Which metrics to plot')
-    parser.add_argument('--n_buckets', type=int, default=10,
-                        help='Number of buckets (default: 10)')
-    parser.add_argument('--save_dir', type=str, default=None,
-                        help='Directory to save plots (default: show interactively)')
-    parser.add_argument('--dataset_name', type=str, default='',
-                        help='Dataset name shown in plot title')
+                        help='Which metric to plot (default: confidence)')
+    parser.add_argument('--n_buckets', type=int, default=6,
+                        help='Number of buckets (default: 6)')
+    parser.add_argument('--save_path', type=str, default=None,
+                        help='Path to save the combined plot')
+    parser.add_argument('--dataset_names', '-n', nargs='+', type=str, default=None,
+                        help='Custom names for each dataset (order matches input files)')
     args = parser.parse_args()
 
-    print(f"Loading {args.input_file} ...")
-    with open(args.input_file, 'r', encoding='utf-8') as f:
-        dataset = json.load(f)
-    print(f"Loaded {len(dataset)} samples")
-
-    if args.save_dir:
-        os.makedirs(args.save_dir, exist_ok=True)
-
-    extractor_map = {
-        'confidence':            extract_confidence_pairs,
-        'backward_digits':       extract_backward_digits_pairs,
-        'backward_probability':  extract_backward_probability_pairs,
-    }
-
-    pairs_dict = {}
-    for metric in args.metrics:
-        print(f"Extracting {metric} ...")
-        pairs = extractor_map[metric](dataset)
-        pairs_dict[metric] = pairs
-        print(f"  → {len(pairs)} rollout pairs extracted")
-
-    plot_all_metrics(pairs_dict,
-                     n_buckets=args.n_buckets,
-                     save_dir=args.save_dir,
-                     dataset_name=args.dataset_name)
+    plot_multiple_metrics(
+        input_files=args.input_files,
+        metric_name=args.metric,
+        n_buckets=args.n_buckets,
+        save_path=args.save_path,
+        dataset_names=args.dataset_names
+    )
 
 
 if __name__ == '__main__':
