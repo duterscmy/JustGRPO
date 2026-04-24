@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name="eval_arc"
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=2
-#SBATCH --gres=gpu:2
+#SBATCH --ntasks-per-node=1
+#SBATCH --gres=gpu:1
 #SBATCH --time=24:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
@@ -39,7 +39,7 @@ echo "Logging to: $log_path"
 
 
 # 运行评估
-accelerate launch --num_processes 2 eval_llada.py \
+accelerate launch --num_processes 1 eval_llada.py \
   --tasks arc_cot_zeroshot \
   --model llada_dist \
   --num_fewshot 0 \
