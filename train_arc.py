@@ -248,6 +248,8 @@ def parse_args():
     parser.add_argument("--grad_accum", type=int, default=8, help="Gradient accumulation steps")
     parser.add_argument("--resume_ckpt", type=str, default=None, help="Resume checkpoint path")
     parser.add_argument("--block_size", type=int, default=1, help="Generate Block Size")
+    parser.add_argument("--gen_length", type=int, default=64, help="Generation length")
+    parser.add_argument("--gen_steps", type=int, default=64, help="Generation steps")
     parser.add_argument("--temperature", '-t',type=float, default=1.0,  help="rollout temperature")
     parser.add_argument("--lr", type=float, default=5e-6,  help="lr")
     parser.add_argument("--total_steps", type=int, default=50, help="Total training steps")
@@ -265,6 +267,8 @@ if __name__ == "__main__":
         grad_accumulation=args.grad_accum,
         resume_ckpt=args.resume_ckpt,
         block_size=args.block_size,
+        gen_length=args.gen_length,
+        gen_steps=args.gen_steps,
         temperature= args.temperature,
         learning_rate=args.lr,
         total_steps=args.total_steps,
