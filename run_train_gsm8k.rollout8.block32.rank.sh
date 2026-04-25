@@ -20,9 +20,10 @@ mkdir -p $output_dir
 #--resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/training-state-000028
 
 accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_gsm8k.rollout8.rank.py \
+  --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_gsm8k_num_generation8_test_block32_temperature1.0_lr5e-6_0424_rank/training-state-000010 \
   --run_dir $output_dir \
   --block_size 32 \
   --lr $lr  \
   --temperature 1.0 \
-  --total_steps 10 --save_every 5 \
+  --total_steps 30 --save_every 2 \
   --grad_accum 8 >> $output_dir.log 2>&1
