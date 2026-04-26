@@ -7,6 +7,9 @@
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
 
+export HF_ALLOW_CODE_EVAL=1
+export HF_DATASETS_TRUST_REMOTE_CODE=true
+
 ### 激活conda环境
 source ~/.bashrc
 conda activate soar
