@@ -163,6 +163,7 @@ def train(config: TrainConfig):
                     print("use temperature: {}".format(config.temperature))
                     for _ in range(config.repeat_times):
                         for tmp in range(3):
+                            print(f"Sampling with weighted confidence, repeat_time={_}, tmp={tmp}...")
                             inputs = sample_with_weighted_confidence(
                                 model=model,
                                 batch=batch,
@@ -176,6 +177,7 @@ def train(config: TrainConfig):
                                 repeat_time=config.sample_repeat_times,
                                 block_size=config.block_size
                             )
+                            print(f"tmp={tmp}, label_true={inputs['label_true']}")
                             if tmp == 2 or inputs["label_true"]:
                                 inputs_chunks.append(inputs)
                                 break
