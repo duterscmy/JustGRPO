@@ -26,5 +26,5 @@ accelerate launch --num_processes 4 --main_process_ip localhost --config_file co
   --lr $lr \
   --block_size $block \
   --max_level $max_level \
-  --total_steps 10 --save_every 2 \
+  --total_steps 10 --save_every 5 \
   --grad_accum 16 >> $output_dir.log 2>&1
