@@ -172,19 +172,25 @@ def sample_with_weighted_confidence(model, batch, tokenizer, device, reward_fn=N
         print(all_generated_ids.size())
         responses = tokenizer.batch_decode(all_generated_ids, skip_special_tokens=True)
 
+        rewards, label_true = reward_fn(
+                batch, responses, num_generations * repeat_time, device,
+                confidences=all_confidences,
+                label_true=True
+            )
+        rewards = rewards.float()
+
         return {
             'generated_ids': all_generated_ids,
             'prompt_len': prompt_ids.shape[1],
-            'rewards': reward_fn(
-                batch, responses, num_generations * repeat_time, device,
-                confidences=all_confidences
-            ).float() if reward_fn else None,
+            'rewards': rewards,
+            'label_true': label_true
         }
     else:
         return {
             'generated_ids': torch.tensor([]),
             'prompt_len': prompt_ids.shape[1],
             'rewards': None,
+            'label_true': None
         }
 
 def logprob_loss(model, inputs, valid_samples, eps=0.2, gain=1.0, temperature=1., accelerator=None,

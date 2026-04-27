@@ -173,7 +173,7 @@ def reward_ttrl_old(batch, responses, num_generations, device):
     return rewards
 
 
-def reward_ttrl(batch, responses, num_generations, device, confidences=None):
+def reward_ttrl(batch, responses, num_generations, device, confidences=None, label_true=False):
     """
     Compute reward for responses using TTRL's majority voting method.
     Supports confidence-weighted voting when confidences are provided.
@@ -301,9 +301,12 @@ def reward_ttrl(batch, responses, num_generations, device, confidences=None):
         # ── 分配 reward ────────────────────────────────
         for i, norm_ans in enumerate(normalized_answers):
             if norm_ans == majority_norm_answer:
-                rewards[start_idx + i] = 1.0
- 
-    return rewards
+                rewards[start_idx + i] =1.0
+    if label_true:
+        return rewards, best_is_correct
+    else:
+        return rewards
+
 
 def reward_ttrl_arc(batch, responses, num_generations, device):
     """

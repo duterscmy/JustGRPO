@@ -162,20 +162,23 @@ def train(config: TrainConfig):
                     inputs_chunks = []
                     print("use temperature: {}".format(config.temperature))
                     for _ in range(config.repeat_times):
-                        inputs = sample_with_weighted_confidence(
-                            model=model,
-                            batch=batch,
-                            tokenizer=tokenizer,
-                            device=device,
-                            reward_fn=reward_fn,
-                            temperature=config.temperature,
-                            num_generations=config.num_generations,
-                            steps=config.gen_steps,
-                            gen_length=config.gen_length,
-                            repeat_time=config.sample_repeat_times,
-                            block_size=config.block_size
-                        )
-                        inputs_chunks.append(inputs)
+                        for tmp in range(3):
+                            inputs = sample_with_weighted_confidence(
+                                model=model,
+                                batch=batch,
+                                tokenizer=tokenizer,
+                                device=device,
+                                reward_fn=reward_fn,
+                                temperature=config.temperature,
+                                num_generations=config.num_generations,
+                                steps=config.gen_steps,
+                                gen_length=config.gen_length,
+                                repeat_time=config.sample_repeat_times,
+                                block_size=config.block_size
+                            )
+                            if tmp == 2 or inputs["label_true"]:
+                                inputs_chunks.append(inputs)
+                                break
                         torch.cuda.empty_cache()
 
                     # --- Compute Advantages ---
