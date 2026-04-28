@@ -116,8 +116,7 @@ def reward_arc(batch, responses, num_generations, device):
         Tensor of rewards (+1 for correct, -1 for incorrect)
     """
     answers = batch['answers'] * num_generations
-    
-    ext_ans = [extract_arc_answer(ans) for ans in answers]
+    ext_ans = [ans for ans in answers]
     ext_res = [extract_arc_answer(res) for res in responses]
     print("ext_ans: {}".format(ext_ans))
     print("ext_res: {}".format(ext_res))
@@ -261,7 +260,6 @@ def reward_ttrl(batch, responses, num_generations, device, confidences=None, lab
                 rewards[start_idx + i] =1.0
 
     return rewards
-
 
 def reward_ttrl_arc(batch, responses, num_generations, device):
     """

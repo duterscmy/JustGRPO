@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import utils.distributed as dist
-from grpo import sample, sample_with_repeat, logprob_loss, compute_group_advantages
+from grpo import sample, logprob_loss, compute_group_advantages
 
 
 
@@ -17,25 +17,25 @@ class TrainConfig:
     
     # --- Model ---
     model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct"
+    # model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/ckpt-000014"
     
     # --- Training ---
     batch_size_per_device: int = 1
     grad_accumulation: int = 8
-    total_steps: int = 10
+    # total_steps: int = 125
+    total_steps: int = 40
     learning_rate: float = 1e-6
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
     seed: int = 1234
     num_generations: int = 8
-    repeat_times: int = 1
-    sample_repeat_times: int = 1
-    gen_steps: int = 64
-    gen_length: int = 64
-    temperature: float = 0.6
-    block_size: int = 8
+    repeat_times: int = 2
+    gen_steps: int = 128
+    gen_length: int = 128
+    block_size: int = 32
 
     # --- Misc ---
-    output_dir: str = "./checkpoints"
+    output_dir: str = "./checkpoints_arc_justgrpo"
     log_every: int = 1
     save_every: int = 5
     resume_ckpt: Optional[str] = None
@@ -89,12 +89,11 @@ def train(config: TrainConfig):
     # --- Load dataset (ARC) ---
     print("Loading ARC dataset...")
     from data.math import load_arc_dataset_and_reward
-    
     dataloader, reward_fn = load_arc_dataset_and_reward(
-        local_path="allenai/ai2_arc",
-        split='train',
+        local_path="arc",
         batch_size=config.batch_size_per_device,
         num_workers=4,
+        spkit='train',
         method="justgrpo",
     )
     
@@ -137,7 +136,7 @@ def train(config: TrainConfig):
     
     # --- Training loop ---
     print(f"Starting training for {config.total_steps} steps...")
-    print(f"Group size: {config.num_generations * config.repeat_times * config.sample_repeat_times}")
+    print(f"Group size: {config.num_generations * config.repeat_times}")
     print(f"Grad accumulation: {config.grad_accumulation}")
     print(f"Effective batch: {config.batch_size_per_device * dist.get_world_size() * config.grad_accumulation}")
     print(f"Learning rate: {config.learning_rate}")
@@ -158,7 +157,7 @@ def train(config: TrainConfig):
                     inputs_chunks = []
                     
                     for _ in range(config.repeat_times):
-                        inputs = sample_with_repeat(
+                        inputs = sample(
                             model=model,
                             batch=batch,
                             tokenizer=tokenizer,
@@ -167,21 +166,16 @@ def train(config: TrainConfig):
                             num_generations=config.num_generations,
                             steps=config.gen_steps,
                             gen_length=config.gen_length,
-                            repeat_time=config.sample_repeat_times,
                             block_size=config.block_size,
-                            apply_chat_template=False,
-                            temperature=config.temperature,
                         )
                         inputs_chunks.append(inputs)
-                        torch.cuda.empty_cache()
 
                     # --- Compute Advantages ---
                     rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
-                    print("reward size: {}".format(rewards.size()))
-                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times * config.sample_repeat_times)
-                    print("advantages size: {}".format(advantages.size()))
+                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times)
+                    
                     valid_samples = (advantages != 0).sum()
-                    split_advantages = advantages.split(config.num_generations*config.sample_repeat_times, dim=0)
+                    split_advantages = advantages.split(config.num_generations, dim=0)
                     for chunk, adv in zip(inputs_chunks, split_advantages):
                         chunk["advantages"] = adv
                     
@@ -198,7 +192,6 @@ def train(config: TrainConfig):
                             gain=1.0,
                             accelerator=accelerator,
                             gen_length=config.gen_length,
-                            temperature=config.temperature,
                         )
                         all_rewards.append(inputs['rewards'].detach())
                 
@@ -228,15 +221,14 @@ def train(config: TrainConfig):
         # --- Save checkpoint ---
         if (step + 1) % config.save_every == 0:
             state_dict = accelerator.get_state_dict(model)
-            if (step + 1) == config.total_steps:
-                save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
-                accelerator.save_state(save_path)
+            save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
+            accelerator.save_state(save_path)
             if rank == 0:
                 save_path = os.path.join(config.output_dir, f'ckpt-{step+1:06d}')
                 accelerator.unwrap_model(model).save_pretrained(
                     save_path, state_dict=state_dict, safe_serialization=True
                 )
-                print(f"Saved checkpoint to {save_path}")
+            print(f"Saved checkpoint to {save_path}")
         accelerator.wait_for_everyone()
     
     print("\nTraining complete!")
@@ -255,7 +247,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=5e-6,  help="lr")
     parser.add_argument("--total_steps", type=int, default=50, help="Total training steps")
     parser.add_argument("--save_every", type=int, default=5, help="Save checkpoint every N steps")
-    parser.add_argument("--model_path", type=str, default="/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct", help="Path to the model")
+    parser.add_argument("--model_path", type=str, default="./model", help="Path to the model")
     
     return parser.parse_args()
 
@@ -271,12 +263,11 @@ if __name__ == "__main__":
         block_size=args.block_size,
         gen_length=args.gen_length,
         gen_steps=args.gen_steps,
-        temperature= args.temperature,
+        temperature=args.temperature,
         learning_rate=args.lr,
         total_steps=args.total_steps,
         save_every=args.save_every,
         model_path=args.model_path,
     )
-    
 
     train(config)
