@@ -255,6 +255,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=5e-6,  help="lr")
     parser.add_argument("--total_steps", type=int, default=50, help="Total training steps")
     parser.add_argument("--save_every", type=int, default=5, help="Save checkpoint every N steps")
+    parser.add_argument("--model_path", type=str, default="./model", help="Path to the model")
     
     return parser.parse_args()
 
@@ -274,6 +275,7 @@ if __name__ == "__main__":
         learning_rate=args.lr,
         total_steps=args.total_steps,
         save_every=args.save_every,
+        model_path=args.model_path,
     )
     
 
