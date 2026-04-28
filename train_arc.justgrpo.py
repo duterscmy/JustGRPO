@@ -255,7 +255,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=5e-6,  help="lr")
     parser.add_argument("--total_steps", type=int, default=50, help="Total training steps")
     parser.add_argument("--save_every", type=int, default=5, help="Save checkpoint every N steps")
-    parser.add_argument("--model_path", type=str, default="./model", help="Path to the model")
+    parser.add_argument("--model_path", type=str, default="/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct", help="Path to the model")
     
     return parser.parse_args()
 
