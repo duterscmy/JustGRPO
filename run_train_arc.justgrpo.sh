@@ -20,6 +20,7 @@ mkdir -p $output_dir
 
 #--resume_ckpt 
 accelerate launch --num_processes 1 --main_process_ip localhost --config_file configs/fsdp.yaml train_arc.justgrpo.py \
+  --model_path /mnt/fast/nobackup/scratch4weeks/mc03002/models/LLaDA-8B-Instruct \
   --run_dir $output_dir \
   --block_size $block \
   --grad_accum 1 \
