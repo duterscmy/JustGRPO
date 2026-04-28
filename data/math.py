@@ -101,77 +101,34 @@ def reward_MATH(batch, responses, num_generations, device):
             rewards[i] = -1.0
     return rewards
 
-def reward_ttrl_old(batch, responses, num_generations, device):
+
+def reward_arc(batch, responses, num_generations, device):
     """
-    Compute reward for GSM8K responses using TTRL's majority voting method.
+    Compute reward for ARC responses.
     
     Args:
-        batch: Batch containing problems (but NOT using ground truth answers for reward)
+        batch: Batch containing ground truth answers
         responses: Model generated responses
         num_generations: Number of generations per problem
         device: Torch device
     
     Returns:
-        Tensor of rewards (+1 for matching majority vote, -1 for not matching)
+        Tensor of rewards (+1 for correct, -1 for incorrect)
     """
-    from collections import Counter
+    answers = batch['answers'] * num_generations
     
-    ground_truth_cot = list(batch['answers'])[0]
-    if "####" in ground_truth_cot:
-        answer = extract_answer_gsm8k(ground_truth_cot)
-    else:
-        answer = parse_ground_truth(ground_truth_cot)[1]
-
-    print("======correct answer: {}======".format(answer))
-    num_problems = len(responses) // num_generations
-    rewards = torch.zeros(len(responses), device=device)
-    
-    for problem_idx in range(num_problems):
-        # 获取当前问题的所有生成结果
-        start_idx = problem_idx * num_generations
-        end_idx = start_idx + num_generations
-        problem_responses = responses[start_idx:end_idx]
-        
-        # 提取所有答案
-        print("============ROLLOUT==========")
-        extracted_answers = []
-        for resp in problem_responses:
-            ans = extract_answer(resp)
-            extracted_answers.append(ans)
-            print(resp)
-            print(ans)
-            print("==================")
-        
-        # 多数投票：找出出现频率最高的答案作为伪标签
-        if extracted_answers:
-            counter = Counter(extracted_answers)
-            majority_answer = counter.most_common(1)[0][0]
-            print("==========MAJORITY: {}===========".format(majority_answer))
-
-            # 计算多样性统计
-            distinct_answer_num = len(counter)
-            all_answer_num = len(extracted_answers)
-            distinct_answer_ratio = distinct_answer_num / all_answer_num
-            best_answer_ratio = counter[majority_answer] / all_answer_num
-            
-            # 计算正确答案数量
-            correct_answer_number = sum(1 for ans in extracted_answers if ans == answer)
-            
-            # 判断最佳答案是否等于正确答案
-            best_is_correct = 1 if majority_answer == answer else 0
-            
-            # 输出多样性统计和正确答案数量（特定格式）
-            print(f"diversity| distinct_answer_num: {distinct_answer_num} | all_answer_num: {all_answer_num} | distinct_answer_ratio: {distinct_answer_ratio:.2f} | best_answer_ratio: {best_answer_ratio:.2f} | correct_answer_number: {correct_answer_number} | best_is_correct: {best_is_correct} | extracted_answers: {extracted_answers} | majority_answer: {majority_answer} | ground_truth_answer: {answer}", flush=True)
-
-            # 根据是否匹配多数投票结果分配奖励
-            for i, ans in enumerate(extracted_answers):
-                if ans == majority_answer:
-                    rewards[start_idx + i] = 1.0  # 匹配多数投票结果
-                # else:
-                #     rewards[start_idx + i] = -1.0  # 不匹配多数投票结果
+    ext_ans = [extract_arc_answer(ans) for ans in answers]
+    ext_res = [extract_arc_answer(res) for res in responses]
+    print("ext_ans: {}".format(ext_ans))
+    print("ext_res: {}".format(ext_res))
+    rewards = torch.zeros(len(answers), device=device)
+    for i, (ans, res) in enumerate(zip(ext_ans, ext_res)):
+        if math_equal(ans, res):
+            rewards[i] = 1.0
+        else:
+            rewards[i] = -1.0
     
     return rewards
-
 
 def reward_ttrl(batch, responses, num_generations, device, confidences=None, label_true=False):
     """
@@ -559,6 +516,8 @@ def load_gsm8k_dataset_and_reward(
         reward_fn = reward_ttrl
     elif method == 'seq_entropy':
         reward_fn = reward_seq_entropy
+    elif method == 'justgrpo':
+        reward_fn = reward_gsm8k
     return dataloader, reward_fn
 
 
@@ -695,4 +654,6 @@ def load_arc_dataset_and_reward(
         reward_fn = reward_ttrl_arc
     elif method == 'seq_entropy':
         reward_fn = reward_seq_entropy
+    elif method == "justgrpo":
+        reward_fn = reward_arc
     return dataloader, reward_fn
