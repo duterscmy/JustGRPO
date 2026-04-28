@@ -92,7 +92,7 @@ def train(config: TrainConfig):
     
     dataloader, reward_fn = load_arc_dataset_and_reward(
         local_path="allenai/ai2_arc",
-        split='test',
+        split='train',
         batch_size=config.batch_size_per_device,
         num_workers=4,
         method="justgrpo",
