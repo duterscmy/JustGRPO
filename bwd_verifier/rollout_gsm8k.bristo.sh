@@ -17,17 +17,19 @@ mkdir -p logs
 # Set environment variables for PyTorch
 export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-seed=1
+seed=42
+block=$1
+t=$2
 # Run the evaluation script with default parameters
 python rollout_gsm8k.py \
     --steps 256 \
     --gen_length 256 \
-    --block_length 32 \
-    --temperature 1.0 \
+    --block_length ${block} \
+    --temperature ${t} \
     --remasking low_confidence \
     --num_rollouts 8 \
-    --max_problems -1 \
-    --output_file gsm8k_results.add_records.tmp1.0.seed${seed}.json \
+    --max_problems 300 \
+    --output_file gsm8k_results.300.add_records.${block}.${t}.seed${seed}.json \
     --verbose \
     --model_path /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct \
     --device cuda \
