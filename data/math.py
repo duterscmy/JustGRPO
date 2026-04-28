@@ -302,10 +302,8 @@ def reward_ttrl(batch, responses, num_generations, device, confidences=None, lab
         for i, norm_ans in enumerate(normalized_answers):
             if norm_ans == majority_norm_answer:
                 rewards[start_idx + i] =1.0
-    if label_true:
-        return rewards, best_is_correct
-    else:
-        return rewards
+
+    return rewards
 
 
 def reward_ttrl_arc(batch, responses, num_generations, device):

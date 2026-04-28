@@ -172,10 +172,9 @@ def sample_with_weighted_confidence(model, batch, tokenizer, device, reward_fn=N
         print(all_generated_ids.size())
         responses = tokenizer.batch_decode(all_generated_ids, skip_special_tokens=True)
 
-        rewards, label_true = reward_fn(
+        rewards = reward_fn(
                 batch, responses, num_generations * repeat_time, device,
                 confidences=all_confidences,
-                label_true=True
             )
         rewards = rewards.float()
 
@@ -183,7 +182,7 @@ def sample_with_weighted_confidence(model, batch, tokenizer, device, reward_fn=N
             'generated_ids': all_generated_ids,
             'prompt_len': prompt_ids.shape[1],
             'rewards': rewards,
-            'label_true': label_true
+            # 'label_true': label_true
         }
     else:
         return {
