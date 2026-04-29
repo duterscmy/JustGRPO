@@ -51,14 +51,14 @@ def collate_fn_arc(batch):
         if len(choice_texts) > 3:
             prompt += f" (D) {choice_texts[3]}"
         
-        prompt += "\nA: Let's think step by step."
+        prompt += "\nA: Let's think step by step."  # consistent with lm-eval-harness ARC prompt
         problems.append(prompt)
         answers.append(item['answerKey'])
 
     return {"problems": problems, "answers": answers}
 
 def extract_answer_gsm8k(answer: str):
-    """Extract the final answer from GSM8K format (after ####)."""
+    """Extract the final answer from GSM8K original dataset format (after ####)."""
     return answer.split('####')[-1].strip()
 
 def reward_gsm8k(batch, responses, num_generations, device):
@@ -129,7 +129,7 @@ def reward_arc(batch, responses, num_generations, device):
     
     return rewards
 
-def reward_ttrl(batch, responses, num_generations, device, confidences=None, label_true=False):
+def reward_ttrl(batch, responses, num_generations, device, confidences=None):
     """
     Compute reward for responses using TTRL's majority voting method.
     Supports confidence-weighted voting when confidences are provided.
@@ -150,9 +150,9 @@ def reward_ttrl(batch, responses, num_generations, device, confidences=None, lab
     from collections import defaultdict
  
     ground_truth_cot = list(batch['answers'])[0]
-    if "####" in ground_truth_cot:
+    if "####" in ground_truth_cot:  # GSM8K format
         answer = extract_answer_gsm8k(ground_truth_cot)
-    else:
+    else:  # MATH format
         answer = parse_ground_truth(ground_truth_cot)[1]
  
     print("======correct answer: {}======".format(answer))
@@ -165,7 +165,6 @@ def reward_ttrl(batch, responses, num_generations, device, confidences=None, lab
         end_idx = start_idx + num_generations
         problem_responses = responses[start_idx:end_idx]
  
-        # 当前问题的 confidence（没有则等权）
         if confidences is not None:
             problem_confs = confidences[start_idx:end_idx]
         else:
@@ -261,34 +260,43 @@ def reward_ttrl(batch, responses, num_generations, device, confidences=None, lab
 
     return rewards
 
-def reward_ttrl_arc(batch, responses, num_generations, device):
+def reward_ttrl_arc(batch, responses, num_generations, device, confidences=None):
     """
     Compute reward for ARC responses using TTRL's majority voting method.
+    Supports confidence-weighted voting when confidences are provided.
     
     Args:
-        batch: Batch containing problems (but NOT using ground truth answers for reward)
-        responses: Model generated responses
+        batch:           Batch containing problems and answers
+        responses:       Model generated responses (length = num_problems * num_generations)
         num_generations: Number of generations per problem
-        device: Torch device
+        device:          Torch device
+        confidences:     Optional List[float], length = len(responses).
+                         If provided, uses confidence-weighted voting instead of majority voting.
+                         If None, falls back to uniform majority voting.
     
     Returns:
-        Tensor of rewards (+1 for matching majority vote, -1 for not matching)
+        Tensor of rewards (1.0 for matching weighted-majority vote, 0.0 otherwise)
     """
-    from collections import Counter
-    
+    from collections import defaultdict
+
+    print("confidences {}".format(confidences))
+
     answer = list(batch['answers'])[0]
     print("======correct answer: {}======".format(answer))
 
     num_problems = len(responses) // num_generations
     rewards = torch.zeros(len(responses), device=device)
-    
+
     for problem_idx in range(num_problems):
-        # 获取当前问题的所有生成结果
         start_idx = problem_idx * num_generations
         end_idx = start_idx + num_generations
         problem_responses = responses[start_idx:end_idx]
-        
-        # 提取所有答案
+
+        if confidences is not None:
+            problem_confs = confidences[start_idx:end_idx]
+        else:
+            problem_confs = [1.0] * num_generations
+
         print("============ROLLOUT==========")
         extracted_answers = []
         for resp in problem_responses:
@@ -297,35 +305,52 @@ def reward_ttrl_arc(batch, responses, num_generations, device):
             print(resp)
             print(ans)
             print("==================")
-        
-        # 多数投票：找出出现频率最高的答案作为伪标签
-        if extracted_answers:
-            counter = Counter(extracted_answers)
-            majority_answer = counter.most_common(1)[0][0]
-            print("==========MAJORITY: {}===========".format(majority_answer))
 
-            # 计算多样性统计
-            distinct_answer_num = len(counter)
-            all_answer_num = len(extracted_answers)
-            distinct_answer_ratio = distinct_answer_num / all_answer_num
-            best_answer_ratio = counter[majority_answer] / all_answer_num
-            
-            # 计算正确答案数量
-            correct_answer_number = sum(1 for ans in extracted_answers if ans == answer)
-            
-            # 判断最佳答案是否等于正确答案
-            best_is_correct = 1 if majority_answer == answer else 0
-            
-            # 输出多样性统计和正确答案数量（特定格式）
-            print(f"diversity| distinct_answer_num: {distinct_answer_num} | all_answer_num: {all_answer_num} | distinct_answer_ratio: {distinct_answer_ratio:.2f} | best_answer_ratio: {best_answer_ratio:.2f} | correct_answer_number: {correct_answer_number} | best_is_correct: {best_is_correct} | extracted_answers: {extracted_answers} | majority_answer: {majority_answer} | ground_truth_answer: {answer}", flush=True)
+        if not extracted_answers:
+            continue
 
-            # 根据是否匹配多数投票结果分配奖励
-            for i, ans in enumerate(extracted_answers):
-                if ans == majority_answer:
-                    rewards[start_idx + i] = 1.0  # 匹配多数投票结果
-                # else:
-                #     rewards[start_idx + i] = -1.0  # 不匹配多数投票结果
-    
+        # ── Confidence 加权投票 ────────────────────────
+        weighted_counter = defaultdict(float)
+        count_counter = defaultdict(int)
+        for ans, conf in zip(extracted_answers, problem_confs):
+            weighted_counter[ans] += conf
+            count_counter[ans] += 1
+
+        majority_answer = max(weighted_counter.items(), key=lambda x: x[1])[0]
+
+        # ── 统计信息 ──────────────────────────────────
+        distinct_answer_num = len(weighted_counter)
+        all_answer_num = len(extracted_answers)
+        distinct_answer_ratio = distinct_answer_num / all_answer_num
+        best_answer_ratio = count_counter[majority_answer] / all_answer_num
+        correct_answer_number = sum(1 for ans in extracted_answers if ans == answer)
+        best_is_correct = 1 if majority_answer == answer else 0
+
+        using_weighted = confidences is not None
+        print(f"==========MAJORITY: {majority_answer} "
+              f"({'weighted' if using_weighted else 'uniform'})===========")
+        if using_weighted:
+            print(f"confidence weights: {[round(c, 4) for c in problem_confs]}")
+            print(f"weighted scores: {dict(weighted_counter)}")
+
+        print(
+            f"diversity| distinct_answer_num: {distinct_answer_num} | "
+            f"all_answer_num: {all_answer_num} | "
+            f"distinct_answer_ratio: {distinct_answer_ratio:.2f} | "
+            f"best_answer_ratio: {best_answer_ratio:.2f} | "
+            f"correct_answer_number: {correct_answer_number} | "
+            f"best_is_correct: {best_is_correct} | "
+            f"extracted_answers: {extracted_answers} | "
+            f"majority_answer: {majority_answer} | "
+            f"ground_truth_answer: {answer}",
+            flush=True
+        )
+
+        # ── 分配 reward ────────────────────────────────
+        for i, ans in enumerate(extracted_answers):
+            if ans == majority_answer:
+                rewards[start_idx + i] = 1.0
+
     return rewards
 
 def reward_seq_entropy_rank(batch, responses, seq_log_probs_list, num_generations, device):
@@ -428,47 +453,6 @@ def reward_seq_entropy(batch, responses, seq_log_probs_list, num_generations, de
     print("rewards: {}".format(rewards))
     return rewards
 
-def load_gsm8k_dataset_and_reward_justgrpo(
-    local_path: str = "gsm8k",
-    batch_size: int = 1,
-    split: str = 'train',
-    num_workers: int = 4,
-    seed: int = 112,
-):
-    """
-    Load GSM8K dataset and return dataloader with reward function.
-    
-    Args:
-        local_path: HuggingFace dataset path
-        batch_size: Batch size per GPU
-        split: Dataset split to use
-        num_workers: Number of dataloader workers
-        seed: Random seed for shuffling
-    
-    Returns:
-        Tuple of (dataloader, reward_function)
-    """
-    ds = load_dataset(local_path, "main", split=split)
-    ds = ds.with_format('torch')
-    ds = ds.shuffle(seed=seed)
-    
-    sampler = InfiniteSampler(
-        ds, 
-        rank=get_rank(), 
-        num_replicas=get_world_size(),
-    )
-    
-    dataloader = DataLoader(
-        ds,
-        collate_fn=collate_fn_gsm8k,
-        batch_size=batch_size,
-        sampler=sampler,
-        num_workers=num_workers,
-        pin_memory=True,
-    )
-    
-    return dataloader, reward_gsm8k
-
 
 def load_gsm8k_dataset_and_reward(
     local_path: str = "gsm8k",
@@ -526,7 +510,7 @@ def load_math500_dataset_and_reward(
     num_workers: int = 4,
     seed: int = 112,
     method: str = 'ttrl',
-    max_level: int = 3,
+    max_level: int = 5,
 ):
     """
     Load GSM8K dataset and return dataloader with reward function.
