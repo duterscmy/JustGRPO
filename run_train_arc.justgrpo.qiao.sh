@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name="train_arc"
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:4
-#SBATCH --time=24:00:00
+#SBATCH --ntasks-per-node=2
+#SBATCH --gres=gpu:2
+#SBATCH --time=48:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
 #SBATCH --cpus-per-task=18
@@ -24,11 +24,11 @@ output_dir=./checkpoints_arc_num_generation8_test_length${length}_block${block}_
 mkdir -p $output_dir
 
 #--resume_ckpt 
-accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_arc.justgrpo.py \
+accelerate launch --num_processes 2 --main_process_ip localhost --config_file configs/fsdp.yaml train_arc.justgrpo.py \
   --model_path /gpfs/home5/xiaoq/caomingyu/models/LLaDA-8B-Instruct \
   --run_dir $output_dir \
   --block_size $block \
-  --grad_accum 16 \
+  --grad_accum 32 \
   --lr $lr \
   --total_steps 30 --save_every 5 \
   --temperature $t \
