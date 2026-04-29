@@ -173,7 +173,7 @@ def train(config: TrainConfig):
                             steps=config.gen_steps,
                             gen_length=config.gen_length,
                             repeat_time=config.sample_repeat_times,
-                            block_size=config.block_size
+                            block_size=config.block_size,
                             apply_chat_template=True,  # Use chat template for math problems
                         )
                         inputs_chunks.append(inputs)
