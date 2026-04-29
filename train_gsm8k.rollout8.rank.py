@@ -169,6 +169,7 @@ def train(config: TrainConfig):
                             repeat_time=config.sample_repeat_times,
                             block_size=config.block_size,
                             temperature=config.temperature,
+                            apply_chat_template=True,  # Use chat template for GSM8K
                         )
                         inputs_chunks.append(inputs)
                         torch.cuda.empty_cache()

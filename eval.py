@@ -66,6 +66,7 @@ def eval_math(model, tokenizer, device, args):
 
     for batch in pbar:
         msgs = [[{"role": "user", "content": p}] for p in batch["problems"]]
+        # justgrpo: apply chat template for math problems to provide better generation prompt
         prompts = tokenizer.apply_chat_template(
             msgs, add_generation_prompt=True, tokenize=False,
         )
