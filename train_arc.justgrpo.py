@@ -94,7 +94,7 @@ def train(config: TrainConfig):
         local_path="arc",
         batch_size=config.batch_size_per_device,
         num_workers=4,
-        spkit='train',
+        split='train',
         method="justgrpo",
     )
     
