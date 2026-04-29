@@ -19,12 +19,12 @@ output_dir=./checkpoints_arc_num_generation8_test_length${length}_block${block}_
 mkdir -p $output_dir
 
 #--resume_ckpt 
-accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_arc.justgrpo.py \
+accelerate launch --num_processes 1 --main_process_ip localhost --config_file configs/fsdp.yaml train_arc.justgrpo.py \
   --run_dir $output_dir \
   --block_size $block \
-  --grad_accum 16 \
+  --grad_accum 1 \
   --lr $lr \
   --total_steps 30 --save_every 5 \
   --temperature $t \
   --gen_length $length \
-  --gen_steps $length >> $output_dir.log 2>&1
+  --gen_steps $length #>> $output_dir.log 2>&1
