@@ -33,6 +33,7 @@ class TrainConfig:
     gen_steps: int = 128
     gen_length: int = 128
     block_size: int = 32
+    temperature: float = 0.6
 
     # --- Misc ---
     output_dir: str = "./checkpoints_arc_justgrpo"
@@ -167,6 +168,7 @@ def train(config: TrainConfig):
                             steps=config.gen_steps,
                             gen_length=config.gen_length,
                             block_size=config.block_size,
+                            temperature=config.temperature,
                         )
                         inputs_chunks.append(inputs)
 
