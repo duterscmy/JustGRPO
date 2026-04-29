@@ -7,7 +7,7 @@
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
 #SBATCH --cpus-per-task=18
-#SBATCH --mem 64G
+#SBATCH --mem 32G
 #SBATCH --partition=gpu_h100
 
 # Create logs directory if it doesn't exist
