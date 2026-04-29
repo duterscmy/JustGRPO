@@ -1,29 +1,31 @@
 #!/bin/bash
-#SBATCH --job-name=llada_gsm8k_rollout
-#SBATCH --output=logs/llada_gsm8k_rollout_%j.out
-#SBATCH --error=logs/llada_gsm8k_rollout_%j.err
-#SBATCH --time=24:00:00
+#SBATCH --job-name="rollout_gsm8k"
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH --partition=a100
+#SBATCH --time=6:00:00
+#SBATCH -o slurm.%j.%N.out
+#SBATCH -e slurm.%j.%N.err
+#SBATCH --cpus-per-task=18
+#SBATCH --mem 64G
+#SBATCH --partition=gpu_h100
 
 # Create logs directory if it doesn't exist
 mkdir -p logs
-
-
+source /gpfs/home5/xiaoq/.bashrc
+conda activate ttrl
+cd /home/xiaoq/caomingyu/justgrpo/bwd_verifier
 # Activate virtual environment (adjust path as needed)
 # source /path/to/your/venv/bin/activate
 
 # Set environment variables for PyTorch
-export CUDA_VISIBLE_DEVICES=0
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-
 seed=42
 block=$1
 t=$2
+device=0
+
+export CUDA_VISIBLE_DEVICES=$device
+
 # Run the evaluation script with default parameters
 python rollout_gsm8k.py \
     --steps 256 \
@@ -33,7 +35,7 @@ python rollout_gsm8k.py \
     --remasking low_confidence \
     --num_rollouts 8 \
     --max_problems 300 \
-    --output_file gsm8k_results.add_records.tmp1.0.v${seed}.json \
+    --output_file gsm8k_results.add_records.block${block}.temp${t}.v${seed}.json \
     --verbose \
     --model_path /gpfs/home5/xiaoq/caomingyu/models/LLaDA-8B-Instruct \
     --device cuda \
