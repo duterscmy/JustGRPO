@@ -190,7 +190,7 @@ def eval_code(model, tokenizer, device, args):
         gen_ids = generate(
             model=model, prompt=prompt_ids, steps=args.steps,
             gen_length=args.gen_length, block_length=args.block_length,
-            temperature=0.0,
+            temperature=args.temperature,
         )
         completion = tokenizer.batch_decode(
             gen_ids[:, prompt_ids.shape[1]:], skip_special_tokens=True,
@@ -237,6 +237,7 @@ def main():
     parser.add_argument("--steps", type=int, default=256)
     parser.add_argument("--gen_length", type=int, default=256)
     parser.add_argument("--block_length", type=int, default=32)
+    parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=113)
     args = parser.parse_args()
 
