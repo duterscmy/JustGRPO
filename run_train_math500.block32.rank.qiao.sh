@@ -26,6 +26,7 @@ output_dir=./checkpoints_math500_num_generation8_block${block}_t${t}_lr${lr}_lev
 
 mkdir -p $output_dir
 accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_math500.rank.py \
+  --model_path /gpfs/home5/xiaoq/caomingyu/models/LLaDA-8B-Instruct \
   --run_dir $output_dir \
   --temperature ${t} \
   --lr $lr \

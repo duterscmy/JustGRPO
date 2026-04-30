@@ -48,6 +48,7 @@ accelerate launch --num_processes 1 eval_llada.py \
   --confirm_run_unsafe_code \
   --model llada_dist \
   --num_fewshot 0 \
+  --apply_chat_template \
   --output_path $result_path --log_samples \
   --model_args model_path=${model_path},temperature=${temperature},enable_early_exit=false,enable_soar=false,gen_length=${length},steps=${length},block_length=${block},answer_length=5,torch_dtype=torch.bfloat16 &> $log_path
 
