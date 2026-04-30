@@ -3,10 +3,11 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
-#SBATCH --time=3:00:00
+#SBATCH --time=4:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
-
+#SBATCH --cpus-per-task=16
+#SBATCH --partition=gpu_h100
 mkdir -p logs
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
