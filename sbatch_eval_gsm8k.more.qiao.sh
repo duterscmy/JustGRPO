@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name="train_math500_dttrl"
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:4
+#SBATCH --ntasks-per-node=2
+#SBATCH --gres=gpu:2
 #SBATCH --time=4:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=120G
+#SBATCH --mem=60G
 #SBATCH --partition=gpu_h100
 
 # Create logs directory if it doesn't exist
@@ -58,7 +58,7 @@ log_path="${target_dir}/${base_name}.gsm8k.${length}.${block}.log"
 echo "Logging to: $log_path"
 
 # 5. 运行评估
-torchrun --standalone --nproc-per-node=4 eval.py \
+torchrun --standalone --nproc-per-node=2 eval.py \
   --ckpt_path "$model_path" \
   --steps $length \
   --gen_length $length \
