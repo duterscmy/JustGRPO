@@ -30,14 +30,21 @@ def process_gsm8k_dataset(model, tokenizer, device, args):
     """
     Process the GSM-8K dataset and generate rollouts for each problem
     """
+    print(args)
     model.tokenizer = tokenizer  # Pass tokenizer to model for use in generate function
     print("Loading GSM-8K dataset...")
     dataset = load_dataset("openai/gsm8k", name="main", split="test")
     
     # Optionally limit the number of problems for testing
+    total_len = len(dataset)
     if args.max_problems > 0:
-        dataset = dataset.select(range(min(args.max_problems, len(dataset))))
-        print(f"Limited to {len(dataset)} problems")
+        n = min(args.max_problems, total_len)
+        dataset = dataset.select(range(n))
+        print(f"Using first {n} problems")
+    else:
+        n = min(-args.max_problems, total_len)
+        dataset = dataset.select(range(total_len - n, total_len))
+        print(f"Using last {n} problems")
     
     results = []
     
@@ -102,7 +109,7 @@ def process_gsm8k_dataset(model, tokenizer, device, args):
                 skip_special_tokens=True
             )[0]
             
-            print(f"Generated rollout {rollout_idx + 1}:\n{generated_text}\n")
+            # print(f"Generated rollout {rollout_idx + 1}:\n{generated_text}\n")
             rollouts.append(generated_text)
             # rollouts_records.append(records)
             filtered_records = []
@@ -110,14 +117,14 @@ def process_gsm8k_dataset(model, tokenizer, device, args):
                 if record.get('token_id') == 126081:
                     break  # 遇到token_id=126081时停止，不包括这条记录
                 filtered_records.append(record)
-            print(f"Filtered records for rollout {rollout_idx + 1} (up to token_id=126081): {len(filtered_records)} tokens")    
+            # print(f"Filtered records for rollout {rollout_idx + 1} (up to token_id=126081): {len(filtered_records)} tokens")    
             # 计算置信度
             token_confidences = [record.get('confidence', 0.0) for record in filtered_records]
             if token_confidences:
                 avg_confidence = sum(token_confidences) / len(token_confidences)
             else:
                 avg_confidence = 0.0
-            print(f"Average confidence for rollout {rollout_idx + 1}: {avg_confidence:.4f}")
+            # print(f"Average confidence for rollout {rollout_idx + 1}: {avg_confidence:.4f}")
             rollouts_confidence.append(avg_confidence)
         
         # Store result

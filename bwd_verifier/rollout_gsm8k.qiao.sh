@@ -19,7 +19,7 @@ cd /home/xiaoq/caomingyu/justgrpo/bwd_verifier
 # source /path/to/your/venv/bin/activate
 
 # Set environment variables for PyTorch
-seed=42
+seed=113
 block=$1
 t=$2
 device=0
@@ -34,7 +34,7 @@ python rollout_gsm8k.py \
     --temperature ${t} \
     --remasking low_confidence \
     --num_rollouts 8 \
-    --max_problems 300 \
+    --max_problems -1019 \
     --output_file gsm8k_results.add_records.block${block}.temp${t}.v${seed}.json \
     --verbose \
     --model_path /gpfs/home5/xiaoq/caomingyu/models/LLaDA-8B-Instruct \
