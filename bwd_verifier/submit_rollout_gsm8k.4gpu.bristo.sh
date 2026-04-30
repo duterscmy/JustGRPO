@@ -12,6 +12,10 @@ mkdir -p logs
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 seed=113
 
+source /home/u6er/cmy9797.u6er/.bashrc
+conda activate ttrl
+cd /projects/u6er/public/mingyu/justGRPO/bwd_verifier
+
 # 所有任务的参数组合 (block, temp)
 TASKS=(
   "1   0.4"
