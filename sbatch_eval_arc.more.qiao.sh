@@ -13,9 +13,10 @@ mkdir -p logs
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 seed=113
 
-source /home/u6er/cmy9797.u6er/.bashrc
+mkdir -p logs
+source /gpfs/home5/xiaoq/.bashrc
 conda activate ttrl
-cd /projects/u6er/public/mingyu/justGRPO/bwd_verifier
+cd /home/xiaoq/caomingyu/justgrpo
 
 model_path=$1
 cp /gpfs/home5/xiaoq/caomingyu/models/LLaDA-8B-Instruct/config.json /gpfs/home5/xiaoq/caomingyu/models/LLaDA-8B-Instruct/*py /gpfs/home5/xiaoq/caomingyu/models/LLaDA-8B-Instruct/*token* $model_path
