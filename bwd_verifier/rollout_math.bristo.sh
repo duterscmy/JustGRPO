@@ -14,21 +14,26 @@ mkdir -p logs
 export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-seed=1
+seed=113
+block=$1
+t=$2
+device=0
+
+export CUDA_VISIBLE_DEVICES=0
+
 # Run the evaluation script with default parameters
-python rollout_math.py \
+python rollout_gsm8k.py \
     --steps 256 \
     --gen_length 256 \
-    --block_length 32 \
-    --temperature 0.6 \
+    --block_length ${block} \
+    --temperature ${t} \
     --remasking low_confidence \
     --num_rollouts 8 \
-    --max_problems -1 \
-    --add_solve_instruction \
-    --output_file math500_results.add_records.v${seed}.json \
+    --max_problems -1019 \
+    --output_file gsm8k_results.add_records.block${block}.temp${t}.v${seed}.json \
     --verbose \
-    --model_path /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct \
+    --model_path /gpfs/home5/xiaoq/caomingyu/models/LLaDA-8B-Instruct \
     --device cuda \
-    --seed ${seed}
+    --seed ${seed} &> logs/rollout_gsm8k_block${block}_temp${t}_v${seed}.log
 
 echo "Evaluation completed!"

@@ -37,7 +37,7 @@ python rollout_gsm8k.py \
     --max_problems -1019 \
     --output_file gsm8k_results.add_records.block${block}.temp${t}.v${seed}.json \
     --verbose \
-    --model_path /gpfs/home5/xiaoq/caomingyu/models/LLaDA-8B-Instruct \
+    --model_path /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct \
     --device cuda \
     --seed ${seed} &> logs/rollout_gsm8k_block${block}_temp${t}_v${seed}.log
 
