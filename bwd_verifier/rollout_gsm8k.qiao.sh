@@ -39,6 +39,6 @@ python rollout_gsm8k.py \
     --verbose \
     --model_path /gpfs/home5/xiaoq/caomingyu/models/LLaDA-8B-Instruct \
     --device cuda \
-    --seed ${seed}
+    --seed ${seed} &> logs/rollout_gsm8k_block${block}_temp${t}_v${seed}.log
 
 echo "Evaluation completed!"
