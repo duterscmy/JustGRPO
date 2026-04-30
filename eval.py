@@ -46,6 +46,7 @@ def save_log(args, metrics):
 # ---- Math evaluation (GSM8K / MATH500) ----
 
 def eval_math(model, tokenizer, device, args):
+    print(args)
     if args.task == "gsm8k":
         ds = load_dataset("gsm8k", "main", split="test").with_format("torch")
         collate_fn = collate_fn_gsm8k
@@ -76,7 +77,7 @@ def eval_math(model, tokenizer, device, args):
 
         gen_ids = generate(
             model=model, prompt=prompt_ids, steps=args.steps,
-            gen_length=args.gen_length, block_length=args.block_length,
+            gen_length=args.gen_length, block_length=args.block_length, temperature=args.temperature,
         )
         responses = tokenizer.batch_decode(gen_ids, skip_special_tokens=True)
 

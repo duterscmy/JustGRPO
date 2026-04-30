@@ -208,7 +208,7 @@ def plot_single_ax(ax, bucket_labels: List[str],
     ax.spines['bottom'].set_color('#333333')
     
     # 标题和图例
-    ax.set_title(title, fontsize=11, fontweight='medium')
+    # ax.set_title(title, fontsize=11, fontweight='medium')
     ax.legend(loc='lower right', fontsize=8)
 
 
@@ -294,7 +294,7 @@ def plot_multiple_metrics(input_files: List[str],
     fig.tight_layout()
     
     if save_path:
-        plt.savefig(f"{save_path}/{metric_name}.png", dpi=200, bbox_inches='tight', facecolor='white')
+        plt.savefig(f"{save_path}/{metric_name}.pdf", dpi=200, bbox_inches='tight', facecolor='white')
         print(f"\nSaved: {save_path}")
     else:
         plt.show()
