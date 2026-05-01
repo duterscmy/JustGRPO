@@ -3,7 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:4
-#SBATCH --time=72:00:00
+#SBATCH --time=24:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
 #SBATCH --cpus-per-task=16
@@ -30,5 +30,5 @@ accelerate launch --num_processes 4 --main_process_ip localhost --config_file co
   --block_size $block \
   --lr $lr  \
   --temperature $t \
-  --total_steps 45 --save_every 5 \
+  --total_steps 20 --save_every 5 \
   --grad_accum 8 >> $output_dir.log 2>&1
