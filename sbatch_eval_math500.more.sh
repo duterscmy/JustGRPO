@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name="eval_math500"
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=2
-#SBATCH --gres=gpu:2
+#SBATCH --ntasks-per-node=4
+#SBATCH --gres=gpu:4
 #SBATCH --time=5:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
@@ -46,7 +46,7 @@ echo "Logging to: $log_path"
 #     --model_args "pretrained=$model_path,max_new_tokens=256,steps=256,block_size=32,cfg_scale=0.0,suppress_tokens=[],begin_suppress_tokens=[126081;126348]"
 
 
-torchrun --standalone --nproc-per-node=2 eval.py \
+torchrun --standalone --nproc-per-node=4 eval.py \
   --ckpt_path "$model_path" \
   --task math500 \
   --steps $length \
