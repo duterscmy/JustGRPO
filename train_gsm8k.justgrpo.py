@@ -22,7 +22,6 @@ class TrainConfig:
     # --- Training ---
     batch_size_per_device: int = 1
     grad_accumulation: int = 8
-    # total_steps: int = 125
     total_steps: int = 10
     learning_rate: float = 5e-6
     weight_decay: float = 0.0
@@ -33,6 +32,7 @@ class TrainConfig:
     gen_steps: int = 256
     gen_length: int = 256
     block_size: int = 1
+    temperature: float = 1.0
 
     # --- Misc ---
     output_dir: str = "./checkpoints_gsm8k_justgrpo"
@@ -168,6 +168,7 @@ def train(config: TrainConfig):
                             steps=config.gen_steps,
                             gen_length=config.gen_length,
                             block_size=config.block_size,
+                            temperature=config.temperature,
                         )
                         inputs_chunks.append(inputs)
 
@@ -193,6 +194,7 @@ def train(config: TrainConfig):
                             gain=1.0,
                             accelerator=accelerator,
                             gen_length=config.gen_length,
+                            temperature=config.temperature
                         )
                         all_rewards.append(inputs['rewards'].detach())
                 
@@ -222,14 +224,15 @@ def train(config: TrainConfig):
         # --- Save checkpoint ---
         if (step + 1) % config.save_every == 0:
             state_dict = accelerator.get_state_dict(model)
-            save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
-            accelerator.save_state(save_path)
+            if step + 1 == config.total_steps:
+                save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
+                accelerator.save_state(save_path)
             if rank == 0:
                 save_path = os.path.join(config.output_dir, f'ckpt-{step+1:06d}')
                 accelerator.unwrap_model(model).save_pretrained(
                     save_path, state_dict=state_dict, safe_serialization=True
                 )
-            print(f"Saved checkpoint to {save_path}")
+                print(f"Saved checkpoint to {save_path}")
         accelerator.wait_for_everyone()
     
     print("\nTraining complete!")
@@ -242,6 +245,11 @@ def parse_args():
     parser.add_argument("--grad_accum", type=int, default=8, help="Gradient accumulation steps")
     parser.add_argument("--resume_ckpt", type=str, default=None, help="Resume checkpoint path")
     parser.add_argument("--block_size", type=int, default=1, help="Block size for training")
+    parser.add_argument("--temperature", type=float, default=1.0,  help="rollout temperature")
+    parser.add_argument("--lr", type=float, default=5e-6,  help="lr")
+    parser.add_argument("--total_steps", type=int, default=40, help="Total training steps")
+    parser.add_argument("--save_every", type=int, default=5, help="Save checkpoint every N steps")
+    parser.add_argument("--model_path", type=str, default="/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct", help="Path to the model")
     
     return parser.parse_args()
 
@@ -255,6 +263,11 @@ if __name__ == "__main__":
         grad_accumulation=args.grad_accum,
         resume_ckpt=args.resume_ckpt,
         block_size=args.block_size,
+        temperature=args.temperature,
+        learning_rate=args.lr,
+        total_steps=args.total_steps,
+        save_every=args.save_every,
+        model_path=args.model_path,
     )
 
     train(config)
