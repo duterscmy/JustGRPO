@@ -19,7 +19,7 @@ cd /home/xiaoq/caomingyu/justgrpo
 block=32
 t=1.2
 lr=5e-6
-output_dir=./checkpoints_gsm8k_num_generation8_test_block${block}_temperature${t}_lr${lr}_0502
+output_dir=/scratch-shared/xiaoq/caomingyu/models/checkpoints_gsm8k_num_generation8_test_block${block}_temperature${t}_lr${lr}_0502
 mkdir -p $output_dir
 
 #--resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/training-state-000028
