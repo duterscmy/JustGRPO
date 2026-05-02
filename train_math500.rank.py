@@ -174,8 +174,9 @@ def train(config: TrainConfig):
                             gen_length=config.gen_length,
                             repeat_time=config.sample_repeat_times,
                             block_size=config.block_size,
-                            apply_chat_template=True,  # Use chat template for math problems
+                            apply_chat_template=True
                         )
+                        inputs_chunks.append(inputs)
                         torch.cuda.empty_cache()
 
                     # --- Compute Advantages ---
