@@ -19,4 +19,5 @@ accelerate launch --num_processes 4 --main_process_ip localhost --config_file co
   --model_path /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_gsm8k_num_generation8_test_block32_temperature1.0_lr5e-6_0424_rank/ckpt-000022 \
   --run_dir $output_dir \
   --grad_accum 8 \
+  --total_steps 25 --save_every 5 \
   --block_size ${block} >> $output_dir.log 2>&1
