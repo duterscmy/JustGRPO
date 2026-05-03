@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name="train_math500_dttrl"
+#SBATCH --job-name="eval_gsm8k"
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=2
 #SBATCH --gres=gpu:2
