@@ -26,9 +26,9 @@ class TrainConfig:
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
     seed: int = 1234
-    num_generations: int = 4
+    num_generations: int = 2
     repeat_times: int = 1
-    sample_repeat_times: int = 2
+    sample_repeat_times: int = 1
     gen_steps: int = 256
     gen_length: int = 256
     block_size: int = 1
@@ -441,7 +441,7 @@ def train(config: TrainConfig):
                         f"dlogp_p90={policy_shift_stats['delta_logp_p90']:.4f}, "
                         f"dlogp_p99={policy_shift_stats['delta_logp_p99']:.4f}, "
                         f"ratio_p90={policy_shift_stats['ratio_p90']:.3f}, "
-                        f"ratio_p99={policy_shift_stats['ratio_p99']:.3f}, "
+                        f"ratio_p99={policy_shift_stats['ßratio_p99']:.3f}, "
                         f"frac>1.2={policy_shift_stats['frac_ratio_gt_1p2']:.3f}, "
                         f"frac<0.8={policy_shift_stats['frac_ratio_lt_0p8']:.3f}"
                     )

@@ -1,4 +1,4 @@
-ßß#!/bin/bash
+#!/bin/bash
 #SBATCH --job-name="train_gsm8k_8"
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
@@ -19,7 +19,7 @@ mkdir -p $output_dir
 
 #--resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/training-state-000028
 
-accelerate launch --num_processes 1 --main_process_ip localhost --config_file configs/fsdp.yaml train_gsm8k.rollout8.py \
+accelerate launch --num_processes 1 --main_process_ip localhost --config_file configs/fsdp.yaml train_gsm8k.rollout8.debug_collapse.py \
   --run_dir $output_dir \
   --block_size $block \
   --lr $lr  \
