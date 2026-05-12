@@ -266,6 +266,7 @@ def train(config: TrainConfig):
         print(f"Effective batch: {config.batch_size_per_device * dist.get_world_size() * config.grad_accumulation}")
         print(f"Learning rate: {config.learning_rate}")
         print(f"Policy shift logging: {config.log_policy_shift}, stride={config.policy_shift_stride}")
+        print(f"temperature: {config.temperature}")
 
     for step in range(start_step, config.total_steps):
         optimizer.zero_grad(set_to_none=True)
