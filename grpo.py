@@ -197,7 +197,7 @@ def sample_with_weighted_confidence(model, batch, tokenizer, device, reward_fn=N
             'label_true': None
         }
 
-def logprob_loss(model, inputs, valid_samples, eps=0.2, gain=1.0, temperature=1., accelerator=None,
+def logprob_loss_old(model, inputs, valid_samples, eps=0.2, gain=1.0, temperature=1., accelerator=None,
                  gen_length=256, mask_id=126336):
     advantages, generated_ids, prompt_len = inputs['advantages'], inputs['generated_ids'], inputs['prompt_len']
     # print(advantages.size(), generated_ids.size())
@@ -229,6 +229,85 @@ def logprob_loss(model, inputs, valid_samples, eps=0.2, gain=1.0, temperature=1.
         "reward": accelerator.gather(inputs['rewards'].detach()).mean().item(),
         "valid_samples": valid_samples,
     }
+
+
+def logprob_loss(
+    model,
+    inputs,
+    valid_samples,
+    eps=0.2,
+    gain=1.0,
+    temperature=1.0,
+    accelerator=None,
+    gen_length=256,
+    mask_id=126336,
+    grad_accumulation=1,
+    scale_by_grad_accum=True,
+    advantage_clip=None,
+):
+    advantages, generated_ids, prompt_len = (
+        inputs["advantages"],
+        inputs["generated_ids"],
+        inputs["prompt_len"],
+    )
+
+    if advantage_clip is not None:
+        advantages = advantages.clamp(-advantage_clip, advantage_clip)
+
+    batch_size, device = advantages.shape[0], generated_ids.device
+
+    prompt_ids = generated_ids[:, :prompt_len]
+    completion_ids = generated_ids[:, prompt_len:prompt_len + gen_length]
+
+    valid_samples = accelerator.gather(valid_samples.detach()).float().mean().item()
+
+    accum_scale = float(grad_accumulation) if scale_by_grad_accum else 1.0
+    accum_scale = max(accum_scale, 1.0)
+
+    scale = gain / gen_length / (valid_samples + 1e-5) / accum_scale
+
+    for t in range(gen_length):
+        x = torch.cat(
+            [
+                prompt_ids,
+                completion_ids[:, :t],
+                torch.full(
+                    (batch_size, gen_length - t),
+                    mask_id,
+                    device=device,
+                    dtype=generated_ids.dtype,
+                ),
+            ],
+            dim=1,
+        )
+
+        with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
+            logits = model(x).logits / temperature
+
+        log_prob = F.log_softmax(logits[:, prompt_len + t, :].float(), dim=-1)
+
+        token_log_prob = log_prob.gather(
+            -1,
+            completion_ids[:, t:t + 1],
+        ).squeeze(-1)
+
+        # Stop-gradient likelihood-ratio surrogate.
+        # Forward value of ratio is 1, but gradient equals grad(log pi).
+        # In the single-update setting, this behaves like group-advantage
+        # policy-gradient. The clamp is kept for compatibility, but it does
+        # not provide true PPO trust-region behavior here.
+        ratio = (token_log_prob - token_log_prob.detach()).exp()
+        clipped_ratio = ratio.clamp(1 - eps, 1 + eps)
+
+        loss = -torch.min(ratio * advantages, clipped_ratio * advantages)
+
+        accelerator.backward(loss.mul(scale).sum())
+
+    return {
+        "reward": accelerator.gather(inputs["rewards"].detach()).mean().item(),
+        "valid_samples": valid_samples,
+    }
+
 
 def logprob_loss_reinforce(model, inputs, valid_samples, gain=1.0, accelerator=None,
                  gen_length=256, mask_id=126336, temperature=1.):
