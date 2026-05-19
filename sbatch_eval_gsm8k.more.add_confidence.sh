@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name="eval_gsm8k"
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:1                # 请求1块GPU
+#SBATCH --ntasks-per-node=4
+#SBATCH --gres=gpu:4                # 请求1块GPU
 #SBATCH --time=6:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
@@ -48,12 +48,12 @@ base_name=$(basename "$clean_path")
 target_dir="eval_results/${parent_dir}"
 mkdir -p "$target_dir"
 # 4. 拼接最终的日志路径
-log_path="${target_dir}/${base_name}.gsm8k_add_confidence.${length}.${block}.log"
+log_path="${target_dir}/${base_name}.gsm8k_add_confidence_with_result.${length}.${block}.log"
 
 echo "Logging to: $log_path"
 
 # 5. 运行评估
-torchrun --standalone --nproc-per-node=1 eval.add_confidence.py \
+torchrun --standalone --nproc-per-node=4 eval.add_confidence.py \
   --ckpt_path "$model_path" \
   --steps $length \
   --gen_length $length \
