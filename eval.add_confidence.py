@@ -73,12 +73,12 @@ def eval_math(model, tokenizer, device, args):
             prompts, return_tensors="pt", padding=True,
         )["input_ids"].to(device)
 
-        gen_ids = generate(
+        gen_ids, confidence_records = generate(
             model=model, prompt=prompt_ids, steps=args.steps,
             gen_length=args.gen_length, block_length=args.block_length,
         )
         responses = tokenizer.batch_decode(gen_ids, skip_special_tokens=True)
-
+        correct_list = []
         for ans, res in zip(batch["answers"], responses):
             counts[1] += 1
             if args.task == "gsm8k":
@@ -89,7 +89,8 @@ def eval_math(model, tokenizer, device, args):
                 )
             if correct:
                 counts[0] += 1
-
+            correct_list.append(correct)
+        print("{}\t{}".format(confidence_records, correct_list))
         if dist.get_rank() == 0:
             acc = counts[0] / max(counts[1], 1)
             pbar.set_description(f"acc: {acc.item() * 100:.2f}%")

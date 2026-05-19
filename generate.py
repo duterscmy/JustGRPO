@@ -233,9 +233,9 @@ def generate(model, prompt, steps=128, gen_length=128, block_length=128, tempera
 
     import json
     # 输出records作为JSON（不带缩进）
-    print(json.dumps(records))
+    # print(json.dumps(records))
     print(len(records))
-    return x
+    return x, json.dumps(records)
 
 
 def main():
