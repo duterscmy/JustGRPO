@@ -8,7 +8,133 @@ from dataclasses import dataclass
 from typing import Optional, Dict, List, Any
 
 import utils.distributed as dist
-from grpo import sample_with_repeat, logprob_loss, compute_group_advantages
+from grpo import sample_with_repeat, compute_group_advantages
+
+
+def logprob_loss(
+    model,
+    inputs,
+    valid_samples,
+    eps=0.2,
+    gain=1.0,
+    temperature=1.0,
+    accelerator=None,
+    gen_length=256,
+    mask_id=126336,
+    grad_accumulation=1,
+    scale_by_grad_accum=True,
+    advantage_clip=None,
+    ref_model=None,
+    kl_beta=0.0,
+):
+    """
+    GRPO-style single-update policy-gradient loss with optional sampled KL anchor.
+
+    Notes:
+      - The ratio here is a stop-gradient likelihood-ratio surrogate:
+            ratio = exp(logp - stopgrad(logp))
+        Its forward value is 1, but it preserves the policy-gradient direction.
+      - The optional KL term is implemented as a sampled-token logprob anchor:
+            (logp_current - logp_ref)^2
+        This is not full-vocab KL, but is cheap and useful for controlling policy drift.
+    """
+    advantages, generated_ids, prompt_len = (
+        inputs["advantages"],
+        inputs["generated_ids"],
+        inputs["prompt_len"],
+    )
+
+    if advantage_clip is not None:
+        advantages = advantages.clamp(-advantage_clip, advantage_clip)
+
+    batch_size, device = advantages.shape[0], generated_ids.device
+
+    prompt_ids = generated_ids[:, :prompt_len]
+    completion_ids = generated_ids[:, prompt_len:prompt_len + gen_length]
+
+    valid_samples = accelerator.gather(valid_samples.detach()).float().mean().item()
+
+    accum_scale = float(grad_accumulation) if scale_by_grad_accum else 1.0
+    accum_scale = max(accum_scale, 1.0)
+
+    scale = gain / gen_length / (valid_samples + 1e-5) / accum_scale
+
+    total_pg_loss = torch.tensor(0.0, device=device)
+    total_kl_loss = torch.tensor(0.0, device=device)
+
+    for t in range(gen_length):
+        x = torch.cat(
+            [
+                prompt_ids,
+                completion_ids[:, :t],
+                torch.full(
+                    (batch_size, gen_length - t),
+                    mask_id,
+                    device=device,
+                    dtype=generated_ids.dtype,
+                ),
+            ],
+            dim=1,
+        )
+
+        with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
+            logits = model(x).logits / temperature
+
+        log_prob = F.log_softmax(
+            logits[:, prompt_len + t, :].float(),
+            dim=-1,
+        )
+
+        token_log_prob = log_prob.gather(
+            -1,
+            completion_ids[:, t:t + 1],
+        ).squeeze(-1)
+
+        ratio = (token_log_prob - token_log_prob.detach()).exp()
+        clipped_ratio = ratio.clamp(1 - eps, 1 + eps)
+
+        pg_loss = -torch.min(
+            ratio * advantages,
+            clipped_ratio * advantages,
+        )
+
+        if ref_model is not None and kl_beta > 0:
+            with torch.no_grad():
+                with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
+                    ref_logits = ref_model(x).logits / temperature
+
+                ref_log_prob = F.log_softmax(
+                    ref_logits[:, prompt_len + t, :].float(),
+                    dim=-1,
+                )
+
+                ref_token_log_prob = ref_log_prob.gather(
+                    -1,
+                    completion_ids[:, t:t + 1],
+                ).squeeze(-1)
+
+            kl_loss = (token_log_prob - ref_token_log_prob.detach()).pow(2)
+            loss = pg_loss + kl_beta * kl_loss
+
+            total_kl_loss = total_kl_loss + kl_loss.detach().sum()
+        else:
+            loss = pg_loss
+
+        total_pg_loss = total_pg_loss + pg_loss.detach().sum()
+
+        accelerator.backward(loss.mul(scale).sum())
+
+    out = {
+        "reward": accelerator.gather(inputs["rewards"].detach()).mean().item(),
+        "valid_samples": valid_samples,
+    }
+
+    if ref_model is not None and kl_beta > 0:
+        out["pg_loss_sum"] = accelerator.gather(total_pg_loss.reshape(1)).mean().item()
+        out["kl_loss_sum"] = accelerator.gather(total_kl_loss.reshape(1)).mean().item()
+
+    return out
+
 
 
 @dataclass
@@ -40,6 +166,9 @@ class TrainConfig:
     scale_by_grad_accum: bool = True
     advantage_clip: Optional[float] = None
 
+    # --- KL regularization ---
+    kl_beta: float = 0.0
+
     # --- Diagnostics ---
     log_policy_shift: bool = True
     policy_shift_stride: int = 8
@@ -65,16 +194,6 @@ def compute_sampled_ar_logps(
     mask_id=126336,
     stride=8,
 ):
-    """
-    Compute AR-factorized token log-probs on sampled token positions.
-
-    Used only for policy-shift diagnostics:
-        old_logps: before optimizer.step()
-        new_logps: after optimizer.step()
-
-    Returns:
-        logps: Tensor [batch_size, num_positions].
-    """
     model.eval()
 
     batch_size = generated_ids.shape[0]
@@ -119,6 +238,39 @@ def compute_sampled_ar_logps(
     return torch.stack(logps, dim=1)
 
 
+def get_grad_norm(parameters, norm_type=2.0):
+    """
+    Compute current gradient norm.
+
+    Use this after clip_grad_norm_ to get grad_norm_clip.
+    """
+    params = [p for p in parameters if p.grad is not None]
+
+    if len(params) == 0:
+        return torch.tensor(0.0)
+
+    device = params[0].grad.device
+
+    if norm_type == float("inf"):
+        total_norm = max(
+            p.grad.detach().abs().max().to(device)
+            for p in params
+        )
+        return total_norm
+
+    total_norm = torch.norm(
+        torch.stack(
+            [
+                torch.norm(p.grad.detach(), norm_type).to(device)
+                for p in params
+            ]
+        ),
+        norm_type,
+    )
+
+    return total_norm
+
+
 def _safe_quantile(x: torch.Tensor, q: float) -> float:
     if x.numel() == 0:
         return float("nan")
@@ -137,16 +289,6 @@ def compute_policy_shift_stats(
     advantages=None,
     accelerator=None,
 ) -> Dict[str, float]:
-    """
-    Compute policy shift statistics.
-
-    old_logps, new_logps:
-        Tensor [B, P], where P is sampled token positions.
-
-    advantages:
-        Optional Tensor [B]. If provided, split policy shift by positive and
-        negative advantage samples.
-    """
     delta = (new_logps - old_logps).detach().float()
     ratio = torch.exp(delta).clamp(min=1e-6, max=1e6)
 
@@ -230,19 +372,12 @@ def compute_group_diagnostic_stats(
     group_size,
     accelerator=None,
 ) -> Dict[str, Any]:
-    """
-    Compute reward / advantage group diagnostics for one micro-batch.
-
-    The layout follows compute_group_advantages:
-        rewards.view(group_size, -1)
-    so each column corresponds to one query group.
-    """
     with torch.no_grad():
         rewards = rewards.detach().float()
         advantages = advantages.detach().float()
 
-        grouped_rewards = rewards.view(group_size, -1).T.contiguous()      # [num_groups, group_size]
-        grouped_adv = advantages.view(group_size, -1).T.contiguous()       # [num_groups, group_size]
+        grouped_rewards = rewards.view(group_size, -1).T.contiguous()
+        grouped_adv = advantages.view(group_size, -1).T.contiguous()
 
         group_std = grouped_rewards.std(dim=1)
         valid_group = group_std > 1e-4
@@ -283,9 +418,6 @@ def compute_group_diagnostic_stats(
 
 
 def aggregate_micro_stats(stats_list: List[Dict[str, Any]], group_size: int) -> Dict[str, Any]:
-    """
-    Aggregate diagnostics across grad accumulation micro-batches.
-    """
     if len(stats_list) == 0:
         return {}
 
@@ -319,11 +451,6 @@ def format_pos_hist(pos_hist: List[float]) -> str:
 
 
 def train(config: TrainConfig):
-    """
-    Main GRPO training loop.
-    """
-
-    # --- Initialize distributed ---
     dist.init()
     rank = dist.get_rank()
     device = torch.device("cuda")
@@ -333,7 +460,6 @@ def train(config: TrainConfig):
         print("JustGRPO Training")
         print("=" * 60)
 
-    # --- Random seeds ---
     np.random.seed((config.seed * dist.get_world_size() + rank) % (1 << 31))
     torch.manual_seed(np.random.randint(1 << 31))
 
@@ -342,7 +468,6 @@ def train(config: TrainConfig):
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = False
 
-    # --- Load model ---
     if rank == 0:
         print(f"Loading model from {config.model_path}...")
 
@@ -356,15 +481,28 @@ def train(config: TrainConfig):
 
     model.eval().to(device)
 
-    # Activation checkpointing
     if hasattr(model, "model") and hasattr(model.model, "set_activation_checkpointing"):
         model.model.set_activation_checkpointing("whole_layer")
 
-    # --- Tokenizer ---
+    ref_model = None
+    if config.kl_beta > 0:
+        if rank == 0:
+            print(f"Loading frozen reference model from {config.model_path}...")
+
+        ref_model = AutoModel.from_pretrained(
+            config.model_path,
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16,
+        )
+
+        ref_model.eval().to(device)
+
+        for p in ref_model.parameters():
+            p.requires_grad_(False)
+
     tokenizer = AutoTokenizer.from_pretrained(config.model_path)
     tokenizer.pad_token_id = config.mask_id
 
-    # --- Load dataset ---
     if rank == 0:
         print("Loading GSM8K dataset...")
 
@@ -377,7 +515,6 @@ def train(config: TrainConfig):
         num_workers=4,
     )
 
-    # --- Optimizer ---
     optimizer = torch.optim.AdamW(
         params=[p for p in model.parameters() if p.requires_grad],
         lr=config.learning_rate,
@@ -386,11 +523,22 @@ def train(config: TrainConfig):
         weight_decay=config.weight_decay,
     )
 
-    # --- Accelerator setup ---
     accelerator = dist.get_accelerator()
-    model, optimizer, dataloader = accelerator.prepare(model, optimizer, dataloader)
 
-    # --- Resume ---
+    if ref_model is not None:
+        model, optimizer, dataloader, ref_model = accelerator.prepare(
+            model,
+            optimizer,
+            dataloader,
+            ref_model,
+        )
+    else:
+        model, optimizer, dataloader = accelerator.prepare(
+            model,
+            optimizer,
+            dataloader,
+        )
+
     start_step = 0
     if config.resume_ckpt is not None:
         if rank == 0:
@@ -416,13 +564,11 @@ def train(config: TrainConfig):
         for _ in range(start_step):
             next(dataloader_iter)
 
-    # --- Output directory ---
     if rank == 0:
         os.makedirs(config.output_dir, exist_ok=True)
 
     group_size = config.num_generations * config.repeat_times * config.sample_repeat_times
 
-    # --- Training setup log ---
     if rank == 0:
         print(f"Starting training for {config.total_steps} steps...")
         print(f"Group size: {group_size}")
@@ -434,6 +580,8 @@ def train(config: TrainConfig):
         print(f"Gain: {config.gain}")
         print(f"Scale by grad accumulation: {config.scale_by_grad_accum}")
         print(f"Advantage clip: {config.advantage_clip}")
+        print(f"Max grad norm: {config.max_grad_norm}")
+        print(f"KL beta: {config.kl_beta}")
         print(f"Policy shift logging: {config.log_policy_shift}, stride={config.policy_shift_stride}")
         print(f"Group stats logging: {config.log_group_stats}")
 
@@ -443,7 +591,6 @@ def train(config: TrainConfig):
         all_rewards = []
         micro_group_stats = []
 
-        # Monitor one rollout micro-batch per optimizer step.
         monitor_generated_ids = None
         monitor_prompt_len = None
         monitor_old_logps = None
@@ -461,7 +608,6 @@ def train(config: TrainConfig):
                 model.eval()
 
                 with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
-                    # --- Rollout ---
                     batch = next(dataloader_iter)
                     inputs_chunks = []
 
@@ -483,7 +629,6 @@ def train(config: TrainConfig):
                         inputs_chunks.append(inputs)
                         torch.cuda.empty_cache()
 
-                    # --- Compute Advantages ---
                     rewards = torch.cat([chunk["rewards"] for chunk in inputs_chunks], dim=0)
 
                     if rank == 0:
@@ -518,7 +663,6 @@ def train(config: TrainConfig):
 
                     accelerator.wait_for_everyone()
 
-                    # --- Record old log-probs before optimizer update ---
                     if (
                         config.log_policy_shift
                         and accum_idx == 0
@@ -542,7 +686,6 @@ def train(config: TrainConfig):
                             stride=config.policy_shift_stride,
                         ).detach()
 
-                    # --- Compute Loss ---
                     if rank == 0:
                         print(
                             f"[Step {step + 1}/{config.total_steps}] "
@@ -550,6 +693,8 @@ def train(config: TrainConfig):
                         )
 
                     model.train()
+                    if ref_model is not None:
+                        ref_model.eval()
 
                     for inputs in inputs_chunks:
                         logprob_loss(
@@ -564,30 +709,38 @@ def train(config: TrainConfig):
                             grad_accumulation=config.grad_accumulation,
                             scale_by_grad_accum=config.scale_by_grad_accum,
                             advantage_clip=config.advantage_clip,
+                            ref_model=ref_model,
+                            kl_beta=config.kl_beta,
                         )
                         all_rewards.append(inputs["rewards"].detach())
 
                 accelerator.wait_for_everyone()
 
-                # Clear memory.
                 for chunk in inputs_chunks:
                     for key in list(chunk.keys()):
                         del chunk[key]
                 del inputs_chunks
                 torch.cuda.empty_cache()
 
-        # --- Grad Clip & Optimizer Step ---
         for param in model.parameters():
             if param.grad is not None:
                 torch.nan_to_num(param.grad, nan=0, posinf=0, neginf=0, out=param.grad)
 
-        grad_norm = accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
+        grad_norm = accelerator.clip_grad_norm_(
+            model.parameters(),
+            config.max_grad_norm,
+        )
+
         if hasattr(grad_norm, "item"):
             grad_norm = grad_norm.item()
 
+        grad_norm_clip = get_grad_norm(model.parameters())
+
+        if hasattr(grad_norm_clip, "item"):
+            grad_norm_clip = grad_norm_clip.item()
+
         optimizer.step()
 
-        # --- Policy shift monitor after optimizer update ---
         policy_shift_stats = None
 
         if config.log_policy_shift and monitor_generated_ids is not None and monitor_old_logps is not None:
@@ -617,7 +770,6 @@ def train(config: TrainConfig):
             del monitor_rewards
             torch.cuda.empty_cache()
 
-        # --- Logging ---
         if (step + 1) % config.log_every == 0:
             all_rewards_tensor = torch.cat(all_rewards, dim=0)
             gathered_rewards = accelerator.gather(all_rewards_tensor)
@@ -632,7 +784,8 @@ def train(config: TrainConfig):
                 msg = (
                     f"[Step {step + 1}/{config.total_steps}] "
                     f"reward={mean_reward:.4f}, "
-                    f"grad={grad_norm:.4f}"
+                    f"grad_norm={grad_norm:.4f}, "
+                    f"grad_norm_clip={grad_norm_clip:.4f}"
                 )
 
                 if policy_shift_stats is not None:
@@ -670,7 +823,6 @@ def train(config: TrainConfig):
 
                 print(msg)
 
-        # --- Save checkpoint ---
         if (step + 1) % config.save_every == 0:
             state_dict = accelerator.get_state_dict(model)
 
@@ -713,12 +865,7 @@ def parse_args():
         help="Path to the model",
     )
 
-    parser.add_argument(
-        "--gain",
-        type=float,
-        default=1.0,
-        help="Global loss gain.",
-    )
+    parser.add_argument("--gain", type=float, default=1.0, help="Global loss gain.")
 
     parser.add_argument(
         "--no_scale_by_grad_accum",
@@ -731,6 +878,13 @@ def parse_args():
         type=float,
         default=None,
         help="Clip advantages to [-value, value]. Default: no clipping.",
+    )
+
+    parser.add_argument(
+        "--kl_beta",
+        type=float,
+        default=0.0,
+        help="Coefficient for sampled KL/logprob-anchor regularization. 0 disables KL.",
     )
 
     parser.add_argument(
@@ -782,6 +936,7 @@ if __name__ == "__main__":
         scale_by_grad_accum=not args.no_scale_by_grad_accum,
         advantage_clip=args.advantage_clip,
         max_grad_norm=args.max_grad_norm,
+        kl_beta=args.kl_beta,
     )
 
     train(config)
