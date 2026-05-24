@@ -31,7 +31,7 @@ accelerate launch --num_processes 4 --main_process_ip localhost --config_file co
   --lr $lr \
   --block_size $block \
   --max_level $max_level \
-  --total_steps 10 \
+  --total_steps 20 \
   --save_every 5 \
   --grad_accum $grad_accum \
   --gain $gain \
