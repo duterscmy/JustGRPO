@@ -26,12 +26,13 @@ mkdir -p $output_dir
 # --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_block1_t0.6_lr1e-6/training-state-000005
 
 accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_math500.py \
+  --resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints_math500_num_generation8_block1_t0.6_lr5e-6_level1_5_accum8_gain1.0_clip1.0_debug/training-state-000020 \
   --run_dir $output_dir \
   --temperature ${t} \
   --lr $lr \
   --block_size $block \
   --max_level $max_level \
-  --total_steps 20 \
+  --total_steps 40 \
   --save_every 5 \
   --grad_accum $grad_accum \
   --gain $gain \
