@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name="rollout_gsm8k"
+#SBATCH --job-name="rollout_math"
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
@@ -22,7 +22,7 @@ seed=42
 block=$1
 t=$2
 
-python rollout_gsm8k.py \
+python rollout_math.py \
     --steps 256 \
     --gen_length 256 \
     --block_length ${block} \
