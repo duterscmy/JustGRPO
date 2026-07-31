@@ -111,7 +111,7 @@ def process_gsm8k_dataset(model, tokenizer, device, args):
                 skip_special_tokens=True
             )[0]
             
-            # print(f"Generated rollout {rollout_idx + 1}:\n{generated_text}\n")
+            print(f"Generated rollout {rollout_idx + 1}:\n{generated_text}\n")
             rollouts.append(generated_text)
             # rollouts_records.append(records)
             filtered_records = []
