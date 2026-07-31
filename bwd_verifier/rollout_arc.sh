@@ -28,7 +28,7 @@ python rollout_arc.py \
     --block_length 8 \
     --temperature 1.0 \
     --remasking low_confidence \
-    --num_rollouts 8 \
+    --num_rollouts 4 \
     --max_problems -1 \
     --output_file arc_results.add_records.${block}.${t}.seed${seed}.json \
     --verbose \
