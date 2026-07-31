@@ -41,10 +41,12 @@ def process_gsm8k_dataset(model, tokenizer, device, args):
         n = min(args.max_problems, total_len)
         dataset = dataset.select(range(n))
         print(f"Using first {n} problems")
+    # elif args.max_problems < 0:
+    #     n = min(-args.max_problems, total_len)
+    #     dataset = dataset.select(range(total_len - n, total_len))
+    #     print(f"Using last {n} problems")
     else:
-        n = min(-args.max_problems, total_len)
-        dataset = dataset.select(range(total_len - n, total_len))
-        print(f"Using last {n} problems")
+        print(f"Using all {total_len} problems")
     
     results = []
     

@@ -8,11 +8,12 @@
 #SBATCH -e slurm.%j.%N.err
 
 # Create logs directory if it doesn't exist
+
+source /home/u6nc/cmy9797.u6nc/.bashrc
+conda activate ttrl
+cd /projects/u6nc/public/mingyu/justgrpo/bwd_verifier
+
 mkdir -p logs
-
-
-# Activate virtual environment (adjust path as needed)
-# source /path/to/your/venv/bin/activate
 
 # Set environment variables for PyTorch
 export CUDA_VISIBLE_DEVICES=0
@@ -27,11 +28,11 @@ python rollout_gsm8k.py \
     --block_length ${block} \
     --temperature ${t} \
     --remasking low_confidence \
-    --num_rollouts 8 \
-    --max_problems 300 \
-    --output_file gsm8k_results.300.add_records.${block}.${t}.seed${seed}.json \
+    --num_rollouts 4 \
+    --max_problems -1 \
+    --output_file gsm8k_results.add_records.${block}.${t}.seed${seed}.json \
     --verbose \
-    --model_path /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct \
+    --model_path /lus/lfs1aip2/projects/public/u6nc/mingyu/models/LLaDA-8B-Instruct \
     --device cuda \
     --seed ${seed}
 
