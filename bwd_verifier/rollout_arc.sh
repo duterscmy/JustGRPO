@@ -10,7 +10,7 @@
 # Create logs directory if it doesn't exist
 
 source /home/u6nc/cmy9797.u6nc/.bashrc
-conda activate opd
+conda activate ttrl
 cd /projects/u6nc/public/mingyu/justgrpo/bwd_verifier
 
 mkdir -p logs
