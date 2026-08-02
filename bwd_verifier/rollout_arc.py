@@ -94,7 +94,8 @@ def process_arc_dataset(model, tokenizer, device, args):
         
         # Generate multiple rollouts
         rollouts = []
-        rollouts_records = []
+        # rollouts_records = []
+        rollouts_confidence = []
         extracted_answers = []
         
         for rollout_idx in range(args.num_rollouts):
@@ -113,73 +114,42 @@ def process_arc_dataset(model, tokenizer, device, args):
                     cfg_scale=args.cfg_scale, 
                     remasking=args.remasking
                 )
+            
             generated_text = tokenizer.batch_decode(
                 out[:, input_ids.shape[1]:], 
                 skip_special_tokens=True
             )[0]
             
-            # 提取答案
-            extracted_answer = extract_arc_answer(generated_text)
-            
             print(f"Generated rollout {rollout_idx + 1}:\n{generated_text}\n")
-            print(f"Extracted answer: {extracted_answer}")
-            
             rollouts.append(generated_text)
-            rollouts_records.append(records)
-            extracted_answers.append(extracted_answer)
-        
-        # 计算准确率
-        correct_count = sum(1 for ans in extracted_answers if ans == answer_key)
-        accuracy = correct_count / len(extracted_answers) if extracted_answers else 0
-        
-        # 多样性统计
-        unique_answers = set([a for a in extracted_answers if a is not None])
-        distinct_answer_num = len(unique_answers)
-        all_answer_num = len(extracted_answers)
-        
-        # 多数投票答案
-        from collections import Counter
-        if extracted_answers:
-            counter = Counter([a for a in extracted_answers if a is not None])
-            if counter:
-                majority_answer = counter.most_common(1)[0][0]
-                best_answer_ratio = counter[majority_answer] / all_answer_num
+            # rollouts_records.append(records)
+            filtered_records = []
+            for record in sorted(records, key=lambda x: x.get('position', 0)):
+                if record.get('token_id') == 126081:
+                    break  # 遇到token_id=126081时停止，不包括这条记录
+                filtered_records.append(record)
+            # print(f"Filtered records for rollout {rollout_idx + 1} (up to token_id=126081): {len(filtered_records)} tokens")    
+            # 计算置信度
+            token_confidences = [record.get('confidence', 0.0) for record in filtered_records]
+            if token_confidences:
+                avg_confidence = sum(token_confidences) / len(token_confidences)
             else:
-                majority_answer = None
-                best_answer_ratio = 0
-        else:
-            majority_answer = None
-            best_answer_ratio = 0
+                avg_confidence = 0.0
+            # print(f"Average confidence for rollout {rollout_idx + 1}: {avg_confidence:.4f}")
+            rollouts_confidence.append(avg_confidence)
+            extracted_answers.append(answer_key)
         
-        best_is_correct = 1 if majority_answer == answer_key else 0
-        
-        # 打印统计信息
-        print(f"\n=== Problem {idx + 1} Summary ===")
-        print(f"Extracted answers: {extracted_answers}")
-        print(f"Ground truth: {answer_key}")
-        print(f"Majority answer: {majority_answer}")
-        print(f"Best is correct: {best_is_correct}")
-        print(f"Accuracy: {accuracy:.2%} ({correct_count}/{len(extracted_answers)})")
-        print(f"Distinct answers: {distinct_answer_num}")
-        print(f"Best answer ratio: {best_answer_ratio:.2f}")
-        
-        # 输出 diversity 格式（与之前代码兼容）
-        print(f"diversity| distinct_answer_num: {distinct_answer_num} | all_answer_num: {all_answer_num} | best_answer_ratio: {best_answer_ratio:.2f} | correct_answer_number: {correct_count} | best_is_correct: {best_is_correct} | extracted_answers: {extracted_answers} | majority_answer: {majority_answer} | ground_truth_answer: {answer_key}")
+
         
         # Store result
         result = {
             "question": question,
-            "choices": choice_texts,
             "prompt": prompt,
             "rollouts": rollouts,
-            "rollouts_records": rollouts_records,
-            "extracted_answers": extracted_answers,
-            "answer_key": answer_key,
-            "accuracy": accuracy,
-            "correct_count": correct_count,
-            "distinct_answer_num": distinct_answer_num,
-            "majority_answer": majority_answer,
-            "best_is_correct": best_is_correct
+            # "rollouts_records": rollouts_records,
+            "rollouts_confidence": rollouts_confidence,
+            # "solution": solution,
+            "answer": extracted_answers
         }
         results.append(result)
         
