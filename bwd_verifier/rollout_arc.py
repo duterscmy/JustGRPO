@@ -137,7 +137,7 @@ def process_arc_dataset(model, tokenizer, device, args):
                 avg_confidence = 0.0
             # print(f"Average confidence for rollout {rollout_idx + 1}: {avg_confidence:.4f}")
             rollouts_confidence.append(avg_confidence)
-            extracted_answers.append(answer_key)
+            # extracted_answers.append(answer_key)
         
 
         
@@ -148,8 +148,8 @@ def process_arc_dataset(model, tokenizer, device, args):
             "rollouts": rollouts,
             # "rollouts_records": rollouts_records,
             "rollouts_confidence": rollouts_confidence,
-            # "solution": solution,
-            "answer": extracted_answers
+            "solution": answer_key,
+            "answer": answer_key,
         }
         results.append(result)
         
