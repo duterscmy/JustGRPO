@@ -21,16 +21,17 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 seed=42
 block=$1
 t=$2
+length=128
 # Run the evaluation script with default parameters
 python rollout_arc.py \
-    --steps 64 \
-    --gen_length 64 \
-    --block_length 8 \
-    --temperature 1.0 \
+    --steps ${length} \
+    --gen_length ${length} \
+    --block_length ${block} \
+    --temperature ${t} \
     --remasking low_confidence \
     --num_rollouts 8 \
     --max_problems -1 \
-    --output_file arc_results.add_records.${block}.${t}.seed${seed}.json \
+    --output_file arc_results.add_records.length${length}.${block}.${t}.seed${seed}.json \
     --verbose \
     --model_path /lus/lfs1aip2/projects/public/u6nc/mingyu/models/LLaDA-8B-Instruct \
     --device cuda \
