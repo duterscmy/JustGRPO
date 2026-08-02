@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name="rollout_gsm8k"
+#SBATCH --job-name="rollout_arc"
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
