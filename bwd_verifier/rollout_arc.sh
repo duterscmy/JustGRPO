@@ -21,7 +21,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 seed=42
 block=$1
 t=$2
-length=128
+length=$3
 # Run the evaluation script with default parameters
 python rollout_arc.py \
     --steps ${length} \
