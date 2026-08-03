@@ -10,7 +10,7 @@
 set -euo pipefail
 
 source ~/.bashrc
-conda activate opd
+conda activate ttrl
 
 task=${1:?"Usage: sbatch $0 <sudoku|countdown> [model_path] [data_dir]"}
 model_path=${2:-${MODEL_PATH:-/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct}}
@@ -31,7 +31,7 @@ esac
 
 block=${BLOCK_SIZE:-32}
 lr=${LEARNING_RATE:-5e-6}
-total_steps=${TOTAL_STEPS:-30}
+total_steps=${TOTAL_STEPS:-25}
 output_dir=${OUTPUT_DIR:-./checkpoints_${task}_rollout8_block${block}_temperature${temperature}_lr${lr}}
 mkdir -p "$output_dir"
 
@@ -50,8 +50,8 @@ accelerate launch \
   --total_steps "$total_steps" \
   --save_every 5 \
   --grad_accum 8 \
-  --num_generations 4 \
-  --sample_repeat_times 2 \
+  --num_generations 8 \
+  --sample_repeat_times 1 \
   --gen_length 256 \
   --gen_steps 256 \
   > "${output_dir}.log" 2>&1
