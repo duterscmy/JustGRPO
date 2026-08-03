@@ -7,10 +7,9 @@
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
 
-set -euo pipefail
 
 source ~/.bashrc
-conda activate soar
+conda activate ttrl
 
 model_path=${1:?"Usage: sbatch $0 <model_path> <sudoku|countdown> [length] [block] [data_dir]"}
 task=${2:?"Usage: sbatch $0 <model_path> <sudoku|countdown> [length] [block] [data_dir]"}
