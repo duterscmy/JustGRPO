@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name="train_gsm8k_8"
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=4
+#SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:4
 #SBATCH --time=24:00:00
 #SBATCH -o slurm.%j.%N.out
