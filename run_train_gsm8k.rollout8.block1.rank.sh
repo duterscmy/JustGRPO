@@ -9,7 +9,7 @@
 
 ### 激活conda环境
 source ~/.bashrc # 你的环境名
-conda activate opd
+conda activate ttrl
 
 block=1
 t=1.0
