@@ -1,14 +1,14 @@
 #!/bin/bash
 #SBATCH --job-name="eval_gsm8k"
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:4                # 请求2块GPU
-#SBATCH --time=5:00:00
+#SBATCH --ntasks-per-node=1
+#SBATCH --gres=gpu:1                # 请求1块GPU
+#SBATCH --time=8:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
 
 ### 激活conda环境
-source ~/.bashrc # 你的环境名
+source ~/.bashrc # 你的环境名   
 conda activate ttrl
 
 model_path=$1
@@ -21,7 +21,7 @@ if [[ "$model_path" != *"LLaDA"* ]]; then
     echo "model_path does not contain 'LLaDA', copying config files..."
 
     # 源路径
-    source_model_path="/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct"
+    source_model_path="/lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct"
 
     # 检查源路径是否存在
     if [ -d "$source_model_path" ]; then
@@ -53,7 +53,7 @@ log_path="${target_dir}/${base_name}.gsm8k.${length}.${block}.log"
 echo "Logging to: $log_path"
 
 # 5. 运行评估
-torchrun --standalone --nproc-per-node=4 eval.py \
+torchrun --standalone --nproc-per-node=1 eval.py \
   --ckpt_path "$model_path" \
   --steps $length \
   --gen_length $length \
