@@ -57,7 +57,7 @@ def logprob_loss(
     accum_scale = float(grad_accumulation) if scale_by_grad_accum else 1.0
     accum_scale = max(accum_scale, 1.0)
 
-    scale = gain / gen_length / (valid_samples + 1e-5) / accum_scale
+    scale = gain / gen_length / (valid_samples + 1e-5) / accum_scale  # loss对以后的梯度进行缩放，避免梯度过大或过小
 
     total_pg_loss = torch.tensor(0.0, device=device)
     total_kl_loss = torch.tensor(0.0, device=device)
@@ -726,9 +726,15 @@ def train(config: TrainConfig):
             if param.grad is not None:
                 torch.nan_to_num(param.grad, nan=0, posinf=0, neginf=0, out=param.grad)
 
+        grad_norm_before = get_grad_norm(model.parameters())
         grad_norm = accelerator.clip_grad_norm_(
             model.parameters(),
             config.max_grad_norm,
+        )
+        grad_norm_after = get_grad_norm(model.parameters())
+        print(
+            f"grad_norm_before={grad_norm_before.item():.4f}, "
+            f"grad_norm_after={grad_norm_after.item():.4f}"
         )
 
         if hasattr(grad_norm, "item"):
