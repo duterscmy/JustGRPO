@@ -12,9 +12,9 @@ source ~/.bashrc # 你的环境名
 conda activate ttrl
 
 model_path=$1
-length=$2
-block=$3
-cp /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/config.json /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/*py /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/*token* $model_path
+length=${2:-256}
+block=${3:-32}
+cp /lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct/config.json /lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct/*py /lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct/*token* $model_path
 mkdir -p eval_results
 
 # 1. 规范化路径（去除末尾斜杠）

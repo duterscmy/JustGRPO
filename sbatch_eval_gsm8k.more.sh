@@ -12,8 +12,8 @@ source ~/.bashrc # 你的环境名
 conda activate ttrl
 
 model_path=$1
-length=$2
-block=$3
+length=${2:-256}
+block=${3:-32}
 mkdir -p eval_results
 
 # 检查model_path是否包含LLaDA关键字
