@@ -15,7 +15,7 @@ class TrainConfig:
     """Training hyperparameters for GRPO."""
 
     # --- Model ---
-    model_path: str = "/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct"
+    model_path: str = "/lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct"
 
     # --- Training ---
     batch_size_per_device: int = 1
