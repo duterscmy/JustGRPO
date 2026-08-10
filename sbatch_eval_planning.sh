@@ -16,7 +16,7 @@ task=${2:?"Usage: sbatch $0 <model_path> <sudoku|countdown> [length] [block] [da
 length=${3:-256}
 block=${4:-32}
 data_dir=${5:-${DATA_DIR:-dataset}}
-base_model_path=${BASE_MODEL_PATH:-/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct}
+base_model_path=${BASE_MODEL_PATH:-/lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct}
 
 if [[ "$task" != "sudoku" && "$task" != "countdown" ]]; then
   echo "task must be sudoku or countdown" >&2
