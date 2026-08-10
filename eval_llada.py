@@ -317,79 +317,18 @@ class LLaDAEvalHarness(LM):
                 answer_start = max(constraints.keys()) + 2 if constraints else 0
                 answer_start_pos = prompt.shape[1] + answer_start
 
-            # Generate with or without early exit
-            if self.enable_early_exit:
-                if self.enable_soar:
-                    from generate_earlyexit_soar import generate
-                    generated_out = generate(
-                        self.model,
-                        prompt,
-                        steps=self.steps,
-                        gen_length=self.gen_length,
-                        block_length=self.block_length,
-                        temperature=self.temperature,
-                        cfg_scale=self.cfg,
-                        remasking=self.remasking,
-                        mask_id=self.mask_id,
-                        constraints=constraints,
-                        analyze_gap=True,
-                        answer_start_pos=answer_start_pos,
-                        tokenizer=self.tokenizer,
-                        early_exit_thresholds={
-                            'early': self.early_threshold,
-                            'mid': self.mid_threshold,
-                            'late': self.late_threshold
-                        }
-                    )
-                else:
-                    from generate_earlyexit import generate
-                    generated_out, tmp = generate(
-                        self.model,
-                        prompt,
-                        steps=self.steps,
-                        gen_length=self.gen_length,
-                        block_length=self.block_length,
-                        temperature=self.temperature,
-                        cfg_scale=self.cfg,
-                        remasking=self.remasking,
-                        mask_id=self.mask_id,
-                        constraints=constraints,
-                        analyze_gap=True,
-                        answer_start_pos=answer_start_pos,
-                        tokenizer=self.tokenizer,
-                        early_exit_thresholds={
-                            'early': self.early_threshold,
-                            'mid': self.mid_threshold,
-                            'late': self.late_threshold
-                        }
-                    )
-            else:
-                if self.enable_soar:
-                    from generate_soar import generate
-                    generated_out = generate(
-                        self.model,
-                        prompt,
-                        steps=self.steps,
-                        gen_length=self.gen_length,
-                        block_length=self.block_length,
-                        temperature=self.temperature,
-                        cfg_scale=self.cfg,
-                        remasking=self.remasking,
-                        mask_id=self.mask_id,
-                    )
-                else:
-                    from generate import generate as generate_baseline
-                    generated_out = generate_baseline(
-                        self.model,
-                        prompt,
-                        steps=self.steps,
-                        gen_length=self.gen_length,
-                        block_length=self.block_length,
-                        temperature=self.temperature,
-                        cfg_scale=self.cfg,
-                        remasking=self.remasking,
-                        mask_id=self.mask_id,
-                        constraints=constraints,
+            from generate import generate as generate_baseline
+            generated_out = generate_baseline(
+                self.model,
+                prompt,
+                steps=self.steps,
+                gen_length=self.gen_length,
+                block_length=self.block_length,
+                temperature=self.temperature,
+                cfg_scale=self.cfg,
+                remasking=self.remasking,
+                mask_id=self.mask_id,
+                constraints=constraints,
                     )
 
             generated_answer = self.tokenizer.decode(generated_out[0][prompt.shape[1]:], skip_special_tokens=False)

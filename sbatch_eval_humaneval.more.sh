@@ -12,10 +12,10 @@ export HF_DATASETS_TRUST_REMOTE_CODE=true
 
 ### 激活conda环境
 source ~/.bashrc
-conda activate soar
+conda activate ttrl
 
 model_path=$1
-cp /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/config.json /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/*py /lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct/*token* $model_path
+cp /lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct/config.json /lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct/*py /lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct/*token* $model_path
 mkdir -p eval_results
 
 # 1. 规范化路径（去除末尾斜杠）
@@ -29,8 +29,8 @@ base_name=$(basename "$clean_path")
 target_dir="eval_results/${parent_dir}"
 mkdir -p "$target_dir"
 
-length=$2
-block=$3
+length=${2:-256}
+block=${3:-32}
 temperature=0.0
 # 4. 拼接最终的日志路径
 result_path="${target_dir}/${base_name}.humaneval.${length}.${block}"
@@ -49,6 +49,6 @@ accelerate launch --num_processes 1 eval_llada.py \
   --model llada_dist \
   --num_fewshot 0 \
   --output_path $result_path --log_samples \
-  --model_args model_path=${model_path},temperature=${temperature},enable_early_exit=false,enable_soar=false,gen_length=${length},steps=${length},block_length=${block},answer_length=5,torch_dtype=torch.bfloat16 &> $log_path
+  --model_args model_path=${model_path},temperature=${temperature},gen_length=${length},steps=${length},block_length=${block},answer_length=5,torch_dtype=torch.bfloat16 &> $log_path
 
 echo "Evaluation completed!"
