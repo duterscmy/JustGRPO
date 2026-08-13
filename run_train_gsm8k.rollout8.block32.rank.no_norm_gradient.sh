@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name="train_gsm8k_no_norm"
+#SBATCH --job-name="train_gsm8k"
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:4
@@ -14,16 +14,16 @@ conda activate ttrl
 block=32
 t=1.0
 lr=5e-6
-output_dir=./checkpoints_gsm8k_num_generation8_test_block${block}_temperature${t}_lr${lr}_0813_rank
+output_dir=./checkpoints_gsm8k_num_generation8_test_block${block}_temperature${t}_lr${lr}_0830_rank_no_norm
 mkdir -p $output_dir
 
 #--resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/training-state-000028
 
-accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_gsm8k.rollout8.debug_collapse.py \
+accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_gsm8k.rollout8.rank.py \
   --seed 1997 \
   --run_dir $output_dir \
   --block_size $block \
   --lr $lr  \
   --temperature $t \
-  --total_steps 25 --save_every 5 \
+  --total_steps 50 --save_every 5 \
   --grad_accum 8 >> $output_dir.log 2>&1

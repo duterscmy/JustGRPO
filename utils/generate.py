@@ -202,7 +202,6 @@ def generate_with_confidence(model, prompt, steps=128, gen_length=128, block_len
     return x, mean_confidences
 
 
-
 @torch.no_grad()
 def generate_with_seq_log_probs(model, prompt, steps=128, gen_length=128, block_length=128, temperature=0.,
              cfg_scale=0., remasking='low_confidence', mask_id=126336, eos_id=126081):
