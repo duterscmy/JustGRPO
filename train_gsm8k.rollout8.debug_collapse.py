@@ -919,6 +919,13 @@ def parse_args():
         help="Gradient clipping norm.",
     )
 
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=1234,
+        help="Random seed.",
+    )
+
     return parser.parse_args()
 
 
@@ -943,6 +950,7 @@ if __name__ == "__main__":
         advantage_clip=args.advantage_clip,
         max_grad_norm=args.max_grad_norm,
         kl_beta=args.kl_beta,
+        seed=args.seed,
     )
 
     train(config)

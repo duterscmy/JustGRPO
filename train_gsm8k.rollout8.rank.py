@@ -252,7 +252,13 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=5e-6,  help="lr")
     parser.add_argument("--total_steps", type=int, default=50, help="Total training steps")
     parser.add_argument("--save_every", type=int, default=5, help="Save checkpoint every N steps")
-    parser.add_argument("--model_path", type=str, default="/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct", help="Path to the model")
+    parser.add_argument("--model_path", type=str, default="/lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct", help="Path to the model")
+    parser.add_argument(
+            "--seed",
+            type=int,
+            default=1234,
+            help="Random seed.",
+        )
     return parser.parse_args()
 
 
@@ -270,6 +276,7 @@ if __name__ == "__main__":
         total_steps=args.total_steps,
         save_every=args.save_every,
         model_path=args.model_path,
+        seed=args.seed,
     )
 
     train(config)
