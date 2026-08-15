@@ -81,10 +81,11 @@ class LLaDAEvalHarness(LM):
         self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True, torch_dtype=torch.bfloat16, **model_kwargs)
         self.model.eval()
 
-        self.device = torch.device(device)
+        self._device = torch.device(device)
+
         if self.accelerator is not None:
             self.model = self.accelerator.prepare(self.model)
-            self.device = torch.device(f'{self.accelerator.device}')
+            self._device = torch.device(str(self.accelerator.device))
             self._rank = self.accelerator.local_process_index
             self._world_size = self.accelerator.num_processes
         else:
@@ -135,6 +136,10 @@ class LLaDAEvalHarness(LM):
     @property
     def world_size(self):
         return self._world_size
+
+    @property
+    def device(self):
+        return self._device
 
     def _forward_process(self, batch, prompt_index):
         b, l = batch.shape
