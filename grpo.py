@@ -4,6 +4,16 @@ import torch.nn.functional as F
 from utils.generate import generate, generate_with_confidence, generate_with_seq_log_probs
 
 
+def get_completion_lengths(generated_ids, prompt_len, eos_id=126081):
+    """Return completion lengths up to and including the first EOS token."""
+    completion_ids = generated_ids[:, prompt_len:]
+    eos_mask = completion_ids.eq(eos_id)
+    has_eos = eos_mask.any(dim=1)
+    first_eos = eos_mask.to(torch.int64).argmax(dim=1) + 1
+    full_length = torch.full_like(first_eos, completion_ids.shape[1])
+    return torch.where(has_eos, first_eos, full_length)
+
+
 @torch.no_grad()
 def sample(model, batch, tokenizer, device, reward_fn=None, num_generations=1, temperature=1., steps=256, gen_length=256, block_size=1, apply_chat_template=True):
     if apply_chat_template:
@@ -104,7 +114,11 @@ def sample_with_repeat_rank(model, batch, tokenizer, device, reward_fn=None, num
         )
         # generated_ids shape: (num_generations * batch_size, prompt_len + gen_length)
         # ave_conf_list length: num_generations * batch_size
-        avg_len = (generated_ids != 126081).sum(dim=-1).float().mean()
+        completion_lengths = get_completion_lengths(
+            generated_ids,
+            prompt_len=prompt_ids.shape[1],
+        )
+        avg_len = completion_lengths.float().mean()
         print(f"avg_gen_length: {avg_len:.1f}")
         # 将生成的序列和对应的置信度配对存储
         for i in range(len(ave_conf_list)):
@@ -165,7 +179,11 @@ def sample_with_weighted_confidence(model, batch, tokenizer, device, reward_fn=N
             temperature=temperature,
             block_length=block_size
         )
-        avg_len = (generated_ids != 126081).sum(dim=-1).float().mean()
+        completion_lengths = get_completion_lengths(
+            generated_ids,
+            prompt_len=prompt_ids.shape[1],
+        )
+        avg_len = completion_lengths.float().mean()
         print(f"avg_gen_length: {avg_len:.1f}")
         for i in range(len(ave_conf_list)):
             generate_ids_list.append((generated_ids[i], ave_conf_list[i]))
