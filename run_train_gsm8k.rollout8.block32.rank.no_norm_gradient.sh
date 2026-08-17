@@ -25,5 +25,5 @@ accelerate launch --num_processes 4 --main_process_ip localhost --config_file co
   --block_size $block \
   --lr $lr  \
   --temperature $t \
-  --total_steps 50 --save_every 5 \
+  --total_steps 25 --save_every 5 \
   --grad_accum 8 >> $output_dir.log 2>&1
