@@ -35,7 +35,7 @@ accelerate launch \
   --lr "$lr" \
   --block_size "$block" \
   --max_level "$max_level" \
-  --total_steps 15 \
+  --total_steps 10 \
   --save_every 5 \
   --grad_accum "$grad_accum" \
   --scale_by_grad_accum \
