@@ -1,38 +1,187 @@
 import os
 import re
+import json
 import argparse
 import numpy as np
 import torch
+import torch.nn.functional as F
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict, List, Any
 
 import utils.distributed as dist
-from grpo import sample, sample_with_weighted_confidence, logprob_loss, compute_group_advantages
+from grpo import sample_with_repeat, compute_group_advantages, sample_with_weighted_confidence
+
+
+def logprob_loss(
+    model,
+    inputs,
+    valid_samples,
+    eps=0.2,
+    gain=1.0,
+    temperature=1.0,
+    accelerator=None,
+    gen_length=256,
+    mask_id=126336,
+    grad_accumulation=1,
+    scale_by_grad_accum=True,
+    advantage_clip=None,
+    ref_model=None,
+    kl_beta=0.0,
+):
+    """
+    GRPO-style single-update policy-gradient loss with optional sampled KL anchor.
+
+    Notes:
+      - The ratio here is a stop-gradient likelihood-ratio surrogate:
+            ratio = exp(logp - stopgrad(logp))
+        Its forward value is 1, but it preserves the policy-gradient direction.
+      - The optional KL term is implemented as a sampled-token logprob anchor:
+            (logp_current - logp_ref)^2
+        This is not full-vocab KL, but is cheap and useful for controlling policy drift.
+    """
+    advantages, generated_ids, prompt_len = (
+        inputs["advantages"],
+        inputs["generated_ids"],
+        inputs["prompt_len"],
+    )
+
+    if advantage_clip is not None:
+        advantages = advantages.clamp(-advantage_clip, advantage_clip)
+
+    batch_size, device = advantages.shape[0], generated_ids.device
+
+    prompt_ids = generated_ids[:, :prompt_len]
+    completion_ids = generated_ids[:, prompt_len:prompt_len + gen_length]
+
+    valid_samples = accelerator.gather(valid_samples.detach()).float().mean().item()
+
+    accum_scale = float(grad_accumulation) if scale_by_grad_accum else 1.0
+    accum_scale = max(accum_scale, 1.0)
+
+    scale = gain / gen_length / (valid_samples + 1e-5) / accum_scale  # loss对以后的梯度进行缩放，避免梯度过大或过小
+
+    total_pg_loss = torch.tensor(0.0, device=device)
+    total_kl_loss = torch.tensor(0.0, device=device)
+
+    for t in range(gen_length):
+        x = torch.cat(
+            [
+                prompt_ids,
+                completion_ids[:, :t],
+                torch.full(
+                    (batch_size, gen_length - t),
+                    mask_id,
+                    device=device,
+                    dtype=generated_ids.dtype,
+                ),
+            ],
+            dim=1,
+        )
+
+        with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
+            logits = model(x).logits / temperature
+
+        log_prob = F.log_softmax(
+            logits[:, prompt_len + t, :].float(),
+            dim=-1,
+        )
+
+        token_log_prob = log_prob.gather(
+            -1,
+            completion_ids[:, t:t + 1],
+        ).squeeze(-1)
+
+        ratio = (token_log_prob - token_log_prob.detach()).exp()
+        clipped_ratio = ratio.clamp(1 - eps, 1 + eps)
+
+        pg_loss = -torch.min(
+            ratio * advantages,
+            clipped_ratio * advantages,
+        )
+
+        if ref_model is not None and kl_beta > 0:
+            with torch.no_grad():
+                with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
+                    ref_logits = ref_model(x).logits / temperature
+
+                ref_log_prob = F.log_softmax(
+                    ref_logits[:, prompt_len + t, :].float(),
+                    dim=-1,
+                )
+
+                ref_token_log_prob = ref_log_prob.gather(
+                    -1,
+                    completion_ids[:, t:t + 1],
+                ).squeeze(-1)
+
+            kl_loss = (token_log_prob - ref_token_log_prob.detach()).pow(2)
+            loss = pg_loss + kl_beta * kl_loss
+
+            total_kl_loss = total_kl_loss + kl_loss.detach().sum()
+        else:
+            loss = pg_loss
+
+        total_pg_loss = total_pg_loss + pg_loss.detach().sum()
+
+        accelerator.backward(loss.mul(scale).sum())
+
+    out = {
+        "reward": accelerator.gather(inputs["rewards"].detach()).mean().item(),
+        "valid_samples": valid_samples,
+    }
+
+    if ref_model is not None and kl_beta > 0:
+        out["pg_loss_sum"] = accelerator.gather(total_pg_loss.reshape(1)).mean().item()
+        out["kl_loss_sum"] = accelerator.gather(total_kl_loss.reshape(1)).mean().item()
+
+    return out
 
 
 
 @dataclass
 class TrainConfig:
     """Training hyperparameters for GRPO."""
-    
+
     # --- Model ---
     model_path: str = "/lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct"
-    
+
     # --- Training ---
     batch_size_per_device: int = 1
     grad_accumulation: int = 8
-    total_steps: int = 30
+    total_steps: int = 50
     learning_rate: float = 5e-6
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
     seed: int = 1234
+
     num_generations: int = 4
     repeat_times: int = 1
     sample_repeat_times: int = 2
+
     gen_steps: int = 256
     gen_length: int = 256
     block_size: int = 1
-    temperature: float = 0.6
+    temperature: float = 1.0
+
+    gain: float = 1.0
+    scale_by_grad_accum: bool = True
+    advantage_clip: Optional[float] = None
+
+    # --- KL regularization ---
+    kl_beta: float = 0.0
+
+    # --- Diagnostics ---
+    log_policy_shift: bool = True
+    policy_shift_stride: int = 8
+    log_group_stats: bool = True
+
+    # --- Dynamic sampling ---
+    dynamic_sampling: bool = False
+    dynamic_target_valid_groups: Optional[int] = None
+    dynamic_max_attempts_per_group: int = 32
+
+    # --- Token ---
+    mask_id: int = 126336
 
     # --- Misc ---
     output_dir: str = "./checkpoints"
@@ -41,35 +190,315 @@ class TrainConfig:
     resume_ckpt: Optional[str] = None
 
 
+@torch.no_grad()
+def compute_sampled_ar_logps(
+    model,
+    generated_ids,
+    prompt_len,
+    gen_length=256,
+    temperature=1.0,
+    mask_id=126336,
+    stride=8,
+):
+    model.eval()
+
+    batch_size = generated_ids.shape[0]
+    device = generated_ids.device
+
+    prompt_ids = generated_ids[:, :prompt_len]
+    completion_ids = generated_ids[:, prompt_len:prompt_len + gen_length]
+
+    logps = []
+    positions = list(range(0, gen_length, stride))
+
+    for t in positions:
+        x = torch.cat(
+            [
+                prompt_ids,
+                completion_ids[:, :t],
+                torch.full(
+                    (batch_size, gen_length - t),
+                    mask_id,
+                    device=device,
+                    dtype=generated_ids.dtype,
+                ),
+            ],
+            dim=1,
+        )
+
+        with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
+            logits = model(x).logits / temperature
+
+        log_prob = F.log_softmax(
+            logits[:, prompt_len + t, :].float(),
+            dim=-1,
+        )
+
+        token_log_prob = log_prob.gather(
+            -1,
+            completion_ids[:, t:t + 1],
+        ).squeeze(-1)
+
+        logps.append(token_log_prob)
+
+    return torch.stack(logps, dim=1)
+
+
+def _safe_quantile(x: torch.Tensor, q: float) -> float:
+    if x.numel() == 0:
+        return float("nan")
+    return x.quantile(q).item()
+
+
+def _safe_mean(x: torch.Tensor) -> float:
+    if x.numel() == 0:
+        return float("nan")
+    return x.mean().item()
+
+
+def compute_policy_shift_stats(
+    old_logps,
+    new_logps,
+    advantages=None,
+    accelerator=None,
+) -> Dict[str, float]:
+    delta = (new_logps - old_logps).detach().float()
+    ratio = torch.exp(delta).clamp(min=1e-6, max=1e6)
+
+    flat_delta = delta.reshape(-1)
+    flat_ratio = ratio.reshape(-1)
+
+    pos_mask = None
+    neg_mask = None
+
+    if advantages is not None:
+        adv = advantages.detach().float().view(-1, 1).expand_as(delta)
+        pos_mask = (adv > 0).reshape(-1)
+        neg_mask = (adv < 0).reshape(-1)
+
+    if accelerator is not None:
+        flat_delta = accelerator.gather(flat_delta)
+        flat_ratio = accelerator.gather(flat_ratio)
+
+        if pos_mask is not None:
+            pos_mask = accelerator.gather(pos_mask.float()).bool()
+            neg_mask = accelerator.gather(neg_mask.float()).bool()
+
+    abs_delta = flat_delta.abs()
+
+    stats = {
+        "delta_logp_mean": flat_delta.mean().item(),
+        "delta_logp_abs_mean": abs_delta.mean().item(),
+        "delta_logp_p90": abs_delta.quantile(0.90).item(),
+        "delta_logp_p99": abs_delta.quantile(0.99).item(),
+
+        "ratio_mean": flat_ratio.mean().item(),
+        "ratio_p01": flat_ratio.quantile(0.01).item(),
+        "ratio_p05": flat_ratio.quantile(0.05).item(),
+        "ratio_p10": flat_ratio.quantile(0.10).item(),
+        "ratio_p50": flat_ratio.quantile(0.50).item(),
+        "ratio_p90": flat_ratio.quantile(0.90).item(),
+        "ratio_p99": flat_ratio.quantile(0.99).item(),
+
+        "frac_ratio_gt_1p2": (flat_ratio > 1.2).float().mean().item(),
+        "frac_ratio_lt_0p8": (flat_ratio < 0.8).float().mean().item(),
+    }
+
+    if pos_mask is not None:
+        pos_delta = flat_delta[pos_mask]
+        pos_ratio = flat_ratio[pos_mask]
+
+        neg_delta = flat_delta[neg_mask]
+        neg_ratio = flat_ratio[neg_mask]
+
+        stats.update(
+            {
+                "pos_token_frac": pos_mask.float().mean().item(),
+                "neg_token_frac": neg_mask.float().mean().item(),
+
+                "pos_delta_mean": _safe_mean(pos_delta),
+                "pos_delta_abs_mean": _safe_mean(pos_delta.abs()),
+                "pos_ratio_p50": _safe_quantile(pos_ratio, 0.50),
+                "pos_ratio_p90": _safe_quantile(pos_ratio, 0.90),
+                "pos_frac_gt_1p2": (
+                    (pos_ratio > 1.2).float().mean().item()
+                    if pos_ratio.numel() > 0 else float("nan")
+                ),
+
+                "neg_delta_mean": _safe_mean(neg_delta),
+                "neg_delta_abs_mean": _safe_mean(neg_delta.abs()),
+                "neg_ratio_p10": _safe_quantile(neg_ratio, 0.10),
+                "neg_ratio_p50": _safe_quantile(neg_ratio, 0.50),
+                "neg_frac_lt_0p8": (
+                    (neg_ratio < 0.8).float().mean().item()
+                    if neg_ratio.numel() > 0 else float("nan")
+                ),
+            }
+        )
+
+    return stats
+
+
+def compute_group_diagnostic_stats(
+    rewards,
+    advantages,
+    group_size,
+    accelerator=None,
+) -> Dict[str, Any]:
+    with torch.no_grad():
+        rewards = rewards.detach().float()
+        advantages = advantages.detach().float()
+
+        grouped_rewards = rewards.view(group_size, -1).T.contiguous()
+        grouped_adv = advantages.view(group_size, -1).T.contiguous()
+
+        group_std = grouped_rewards.std(dim=1)
+        valid_group = group_std > 1e-4
+
+        pos_count = (grouped_rewards > 0.5).sum(dim=1).long()
+        pos_hist = torch.bincount(pos_count, minlength=group_size + 1).float()
+
+        adv_abs = grouped_adv.abs().reshape(-1)
+        nonzero_adv = (grouped_adv.abs() > 1e-8).float()
+
+        scalars = {
+            "valid_group_ratio": valid_group.float().mean(),
+            "reward_group_std_mean": group_std.mean(),
+            "pos_count_mean": pos_count.float().mean(),
+            "adv_abs_mean": adv_abs.mean(),
+            "adv_abs_p90": adv_abs.quantile(0.90),
+            "adv_abs_max": adv_abs.max(),
+            "nonzero_adv_ratio": nonzero_adv.mean(),
+            "num_groups": torch.tensor(float(grouped_rewards.shape[0]), device=rewards.device),
+        }
+
+        if accelerator is not None:
+            gathered_scalars = {}
+            for k, v in scalars.items():
+                gv = accelerator.gather(v.reshape(1)).float()
+                gathered_scalars[k] = gv.mean().item()
+
+            gathered_hist = accelerator.gather(pos_hist)
+            gathered_hist = gathered_hist.view(-1, group_size + 1).sum(dim=0)
+
+            stats = gathered_scalars
+            stats["pos_hist"] = gathered_hist.detach().cpu().tolist()
+        else:
+            stats = {k: v.item() for k, v in scalars.items()}
+            stats["pos_hist"] = pos_hist.detach().cpu().tolist()
+
+    return stats
+
+
+def aggregate_micro_stats(stats_list: List[Dict[str, Any]], group_size: int) -> Dict[str, Any]:
+    if len(stats_list) == 0:
+        return {}
+
+    out = {}
+
+    scalar_keys = [
+        k for k in stats_list[0].keys()
+        if k != "pos_hist"
+    ]
+
+    for k in scalar_keys:
+        vals = [s[k] for s in stats_list if k in s]
+        out[k] = float(np.mean(vals)) if len(vals) > 0 else float("nan")
+
+    hist = np.zeros(group_size + 1, dtype=np.float64)
+    for s in stats_list:
+        if "pos_hist" in s:
+            hist += np.array(s["pos_hist"], dtype=np.float64)
+
+    out["pos_hist"] = hist.tolist()
+
+    return out
+
+
+def format_pos_hist(pos_hist: List[float]) -> str:
+    parts = []
+    for i, v in enumerate(pos_hist):
+        if v > 0:
+            parts.append(f"{i}:{int(v)}")
+    return "{" + ",".join(parts) + "}"
+
+
+def load_training_progress(resume_ckpt: Optional[str]):
+    """Load exact dataloader progress saved by this script."""
+    if resume_ckpt is None:
+        return None
+
+    progress_path = os.path.join(resume_ckpt, "training_progress.json")
+    if not os.path.isfile(progress_path):
+        return None
+
+    with open(progress_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_training_progress(save_path, completed_steps, data_batches_seen):
+    """Save the number of completed optimizer steps and consumed batches."""
+    progress_path = os.path.join(save_path, "training_progress.json")
+    tmp_path = progress_path + ".tmp"
+    payload = {
+        "completed_steps": int(completed_steps),
+        "data_batches_seen": int(data_batches_seen),
+    }
+
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+        f.write("\n")
+
+    os.replace(tmp_path, progress_path)
+
+
+def distributed_min_int(value, accelerator, device):
+    """Return the minimum integer value across all ranks."""
+    value_tensor = torch.tensor([int(value)], device=device, dtype=torch.long)
+    gathered = accelerator.gather(value_tensor)
+    return int(gathered.min().item())
+
+
+def distributed_sum_int(value, accelerator, device):
+    """Return the sum of an integer value across all ranks."""
+    value_tensor = torch.tensor([int(value)], device=device, dtype=torch.long)
+    gathered = accelerator.gather(value_tensor)
+    return int(gathered.sum().item())
+
+
+def release_inputs_chunks(inputs_chunks):
+    """Release tensors held by a sampled candidate group."""
+    if inputs_chunks is None:
+        return
+
+    for chunk in inputs_chunks:
+        for key in list(chunk.keys()):
+            del chunk[key]
+
+
 def train(config: TrainConfig):
-    """
-    Main GRPO training loop.
-    
-    Args:
-        config: TrainConfig with model path, learning rate, batch size, etc.
-    """
-    
-    # --- Initialize distributed ---
     dist.init()
     rank = dist.get_rank()
-    device = torch.device('cuda')
-    
-    print("=" * 60)
-    print("JustGRPO Training")
-    print("=" * 60)
+    device = torch.device("cuda")
 
-    # --- Random seeds ---
+    if rank == 0:
+        print("=" * 60)
+        print("JustGRPO Training")
+        print("=" * 60)
+
     np.random.seed((config.seed * dist.get_world_size() + rank) % (1 << 31))
     torch.manual_seed(np.random.randint(1 << 31))
+
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.allow_tf32 = False
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = False
-    
-    # --- Load model ---
-    print(f"Loading model from {config.model_path}...")
+
+    if rank == 0:
+        print(f"Loading model from {config.model_path}...")
+
     from transformers import AutoTokenizer, AutoModel
-    
+
     model = AutoModel.from_pretrained(
         config.model_path,
         trust_remote_code=True,
@@ -78,26 +507,40 @@ def train(config: TrainConfig):
 
     model.eval().to(device)
 
-    # Activation checkpointing
-    if hasattr(model, 'model') and hasattr(model.model, 'set_activation_checkpointing'):
-        model.model.set_activation_checkpointing('whole_layer')
-    
-    # --- Tokenizer ---
+    if hasattr(model, "model") and hasattr(model.model, "set_activation_checkpointing"):
+        model.model.set_activation_checkpointing("whole_layer")
+
+    ref_model = None
+    if config.kl_beta > 0:
+        if rank == 0:
+            print(f"Loading frozen reference model from {config.model_path}...")
+
+        ref_model = AutoModel.from_pretrained(
+            config.model_path,
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16,
+        )
+
+        ref_model.eval().to(device)
+
+        for p in ref_model.parameters():
+            p.requires_grad_(False)
+
     tokenizer = AutoTokenizer.from_pretrained(config.model_path)
-    tokenizer.pad_token_id = 126336  # LLaDA mask token
-    
-    # --- Load dataset (GSM8K) ---
-    print("Loading GSM8K dataset...")
+    tokenizer.pad_token_id = config.mask_id
+
+    if rank == 0:
+        print("Loading GSM8K dataset...")
+
     from data.math import load_gsm8k_dataset_and_reward
-    
+
     dataloader, reward_fn = load_gsm8k_dataset_and_reward(
         local_path="gsm8k",
-        split='test',
+        split="test",
         batch_size=config.batch_size_per_device,
         num_workers=4,
     )
-    
-    # --- Optimizer ---
+
     optimizer = torch.optim.AdamW(
         params=[p for p in model.parameters() if p.requires_grad],
         lr=config.learning_rate,
@@ -105,57 +548,148 @@ def train(config: TrainConfig):
         eps=1e-8,
         weight_decay=config.weight_decay,
     )
-    
-    # --- Accelerator setup ---
+
     accelerator = dist.get_accelerator()
-    model, optimizer, dataloader = accelerator.prepare(model, optimizer, dataloader)
-    
-    # --- Resume ---
+
+    if ref_model is not None:
+        model, optimizer, dataloader, ref_model = accelerator.prepare(
+            model,
+            optimizer,
+            dataloader,
+            ref_model,
+        )
+    else:
+        model, optimizer, dataloader = accelerator.prepare(
+            model,
+            optimizer,
+            dataloader,
+        )
+
     start_step = 0
+    data_batches_seen = 0
+    saved_progress = load_training_progress(config.resume_ckpt)
+
     if config.resume_ckpt is not None:
-        print(config.resume_ckpt)
-        local_resume_path = config.resume_ckpt #.split('/')[-1]
+        if rank == 0:
+            print(config.resume_ckpt)
+
+        local_resume_path = config.resume_ckpt
         if os.path.exists(local_resume_path):
-            print(f"Resuming from {local_resume_path}")
+            if rank == 0:
+                print(f"Resuming from {local_resume_path}")
             accelerator.load_state(local_resume_path)
-        match = re.search(r'(\d+)$', config.resume_ckpt.rstrip('/'))
-        if match:
-            start_step = int(match.group(1))
-            print("start_step is {}".format(start_step))
-    
+
+        if saved_progress is not None:
+            start_step = int(saved_progress["completed_steps"])
+            data_batches_seen = int(saved_progress["data_batches_seen"])
+        else:
+            match = re.search(r"(\d+)$", config.resume_ckpt.rstrip("/"))
+            if match:
+                start_step = int(match.group(1))
+
+            # Backward-compatible fallback for checkpoints produced before
+            # exact dataloader progress was saved. This is exact only for the
+            # original fixed-sampling loop.
+            data_batches_seen = start_step * config.grad_accumulation
+            if config.dynamic_sampling:
+                raise RuntimeError(
+                    "Dynamic-sampling resume requires training_progress.json. "
+                    "The old checkpoint does not contain the exact number of "
+                    "sampled batches."
+                )
+
+        if rank == 0:
+            print(f"start_step is {start_step}")
+            print(f"data_batches_seen is {data_batches_seen}")
+
     dataloader_iter = iter(dataloader)
-    
-    if start_step > 0:
-        print(f"Skipping {start_step} batches...")
-        for _ in range(start_step):
+
+    if data_batches_seen > 0:
+        if rank == 0:
+            print(f"Skipping {data_batches_seen} previously consumed batches...")
+        for _ in range(data_batches_seen):
             next(dataloader_iter)
-    
-    # --- Output directory ---
+
     if rank == 0:
         os.makedirs(config.output_dir, exist_ok=True)
-    
-    # --- Training loop ---
-    print(f"Starting training for {config.total_steps} steps...")
-    print(f"Group size: {config.num_generations * config.repeat_times * config.sample_repeat_times}")
-    print(f"Grad accumulation: {config.grad_accumulation}")
-    print(f"Effective batch: {config.batch_size_per_device * dist.get_world_size() * config.grad_accumulation}")
-    print(f"Learning rate: {config.learning_rate}")
+
+    group_size = config.num_generations * config.repeat_times * config.sample_repeat_times
+    update_group_count = (
+        config.dynamic_target_valid_groups
+        if config.dynamic_sampling and config.dynamic_target_valid_groups is not None
+        else config.grad_accumulation
+    )
+
+    if update_group_count <= 0:
+        raise ValueError("The number of update groups must be greater than zero.")
+
+    if config.dynamic_max_attempts_per_group <= 0:
+        raise ValueError("dynamic_max_attempts_per_group must be greater than zero.")
+
+    if rank == 0:
+        print(f"Starting training for {config.total_steps} steps...")
+        print(f"Group size: {group_size}")
+        print(f"Grad accumulation: {config.grad_accumulation}")
+        print(f"Update groups per rank: {update_group_count}")
+        print(f"Effective prompt groups: {config.batch_size_per_device * dist.get_world_size() * update_group_count}")
+        print(f"Learning rate: {config.learning_rate}")
+        print(f"Temperature: {config.temperature}")
+        print(f"Block size: {config.block_size}")
+        print(f"Gain: {config.gain}")
+        print(f"Scale by grad accumulation: {config.scale_by_grad_accum}")
+        print(f"Advantage clip: {config.advantage_clip}")
+        print(f"Max grad norm: {config.max_grad_norm}")
+        print(f"KL beta: {config.kl_beta}")
+        print(f"Policy shift logging: {config.log_policy_shift}, stride={config.policy_shift_stride}")
+        print(f"Group stats logging: {config.log_group_stats}")
+        print(f"Dynamic sampling: {config.dynamic_sampling}")
+        print(f"Dynamic max attempts per group: {config.dynamic_max_attempts_per_group}")
 
     for step in range(start_step, config.total_steps):
         optimizer.zero_grad(set_to_none=True)
-        
+
         all_rewards = []
-        
-        for accum_idx in range(config.grad_accumulation):
-            print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Sampling...")
-            with dist.ddp_sync(model, sync=(accum_idx == config.grad_accumulation - 1)):
+        micro_group_stats = []
+
+        monitor_generated_ids = None
+        monitor_prompt_len = None
+        monitor_old_logps = None
+        monitor_advantages = None
+        monitor_rewards = None
+
+        sampled_groups_local = 0
+        accepted_groups_local = 0
+        rejected_groups_local = 0
+        extra_groups_local = 0
+
+        for accum_idx in range(update_group_count):
+            selected_inputs_chunks = None
+            selected_valid_samples = None
+            max_attempts = (
+                config.dynamic_max_attempts_per_group
+                if config.dynamic_sampling else 1
+            )
+
+            # In dynamic mode every rank samples synchronously until every
+            # rank has one valid group for this accumulation slot. Ranks that
+            # find a valid group early keep it but continue participating in
+            # rollout forwards so FSDP collective calls remain aligned.
+            for attempt_idx in range(max_attempts):
+                if rank == 0:
+                    print(
+                        f"[Step {step + 1}/{config.total_steps}] "
+                        f"[Group {accum_idx + 1}/{update_group_count}] "
+                        f"[Sample attempt {attempt_idx + 1}/{max_attempts}] Sampling..."
+                    )
+
                 model.eval()
-                
+
                 with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
-                    # --- Rollout ---
                     batch = next(dataloader_iter)
-                    inputs_chunks = []
-                    
+                    data_batches_seen += 1
+                    sampled_groups_local += 1
+                    candidate_inputs_chunks = []
+
                     for _ in range(config.repeat_times):
                         inputs = sample_with_weighted_confidence(
                             model=model,
@@ -169,103 +703,444 @@ def train(config: TrainConfig):
                             repeat_time=config.sample_repeat_times,
                             block_size=config.block_size,
                             temperature=config.temperature,
-                            apply_chat_template=True,  # Use chat template for GSM8K
+                            apply_chat_template=True,
                         )
-                        inputs_chunks.append(inputs)
-                        torch.cuda.empty_cache()
+                        candidate_inputs_chunks.append(inputs)
 
-                    # --- Compute Advantages ---
-                    rewards = torch.cat([chunk['rewards'] for chunk in inputs_chunks], dim=0)
-                    print("reward size: {}".format(rewards.size()))
-                    advantages = compute_group_advantages(rewards, config.num_generations * config.repeat_times * config.sample_repeat_times)
-                    print("advantages size: {}".format(advantages.size()))
-                    valid_samples = (advantages != 0).sum()
-                    split_advantages = advantages.split(config.num_generations*config.sample_repeat_times, dim=0)
-                    for chunk, adv in zip(inputs_chunks, split_advantages):
-                        chunk["advantages"] = adv
-                    
-                    accelerator.wait_for_everyone()
+                    rewards = torch.cat(
+                        [chunk["rewards"] for chunk in candidate_inputs_chunks],
+                        dim=0,
+                    )
+                    all_rewards.append(rewards.detach())
 
-                    # --- Compute Loss ---
-                    print(f"[Step {step+1}/{config.total_steps}] [Accum {accum_idx+1}/{config.grad_accumulation}] Computing loss...")
-                    model.train()
-                    for inputs in inputs_chunks:
-                        logprob_loss(
-                            model=model,
-                            inputs=inputs,
-                            valid_samples=valid_samples,
-                            gain=1.0,
+                    if rank == 0:
+                        print(f"reward size: {rewards.size()}")
+
+                    advantages = compute_group_advantages(rewards, group_size)
+
+                    if config.advantage_clip is not None:
+                        advantages = advantages.clamp(
+                            -config.advantage_clip,
+                            config.advantage_clip,
+                        )
+
+                    if rank == 0:
+                        print(f"advantages size: {advantages.size()}")
+
+                    valid_samples = (advantages.abs() > 1e-8).sum()
+                    is_valid_group = bool(valid_samples.item() > 0)
+
+                    if config.log_group_stats:
+                        group_stats = compute_group_diagnostic_stats(
+                            rewards=rewards,
+                            advantages=advantages,
+                            group_size=group_size,
                             accelerator=accelerator,
-                            gen_length=config.gen_length,
-                            temperature=config.temperature,
                         )
-                        all_rewards.append(inputs['rewards'].detach())
-                
-                accelerator.wait_for_everyone()
-                
-                for key in list(inputs.keys()):
-                    del inputs[key]
+                        micro_group_stats.append(group_stats)
 
-        # --- Grad Clip & Optimizer Step ---
+                    split_advantages = advantages.split(
+                        config.num_generations * config.sample_repeat_times,
+                        dim=0,
+                    )
+
+                    for chunk, adv in zip(candidate_inputs_chunks, split_advantages):
+                        chunk["advantages"] = adv
+
+                if selected_inputs_chunks is None and (
+                    is_valid_group or not config.dynamic_sampling
+                ):
+                    selected_inputs_chunks = candidate_inputs_chunks
+                    selected_valid_samples = valid_samples
+                    accepted_groups_local += 1
+                else:
+                    if is_valid_group:
+                        extra_groups_local += 1
+                    else:
+                        rejected_groups_local += 1
+                    release_inputs_chunks(candidate_inputs_chunks)
+                    del candidate_inputs_chunks
+
+                local_ready = selected_inputs_chunks is not None
+                all_ranks_ready = distributed_min_int(
+                    int(local_ready),
+                    accelerator=accelerator,
+                    device=device,
+                ) == 1
+
+                torch.cuda.empty_cache()
+
+                if all_ranks_ready:
+                    break
+
+            if not all_ranks_ready:
+                release_inputs_chunks(selected_inputs_chunks)
+                optimizer.zero_grad(set_to_none=True)
+                raise RuntimeError(
+                    "Dynamic sampling could not find one valid group on every "
+                    f"rank within {max_attempts} attempts for update group "
+                    f"{accum_idx + 1}. Increase "
+                    "--dynamic_max_attempts_per_group."
+                )
+
+            with dist.ddp_sync(model, sync=(accum_idx == update_group_count - 1)):
+                if (
+                    config.log_policy_shift
+                    and accum_idx == 0
+                    and monitor_generated_ids is None
+                    and len(selected_inputs_chunks) > 0
+                ):
+                    monitor_inputs = selected_inputs_chunks[0]
+                    monitor_generated_ids = monitor_inputs["generated_ids"].detach().clone()
+                    monitor_prompt_len = monitor_inputs["prompt_len"]
+                    monitor_advantages = monitor_inputs["advantages"].detach().clone()
+                    monitor_rewards = monitor_inputs["rewards"].detach().clone()
+
+                    monitor_old_logps = compute_sampled_ar_logps(
+                        model=model,
+                        generated_ids=monitor_generated_ids,
+                        prompt_len=monitor_prompt_len,
+                        gen_length=config.gen_length,
+                        temperature=config.temperature,
+                        mask_id=config.mask_id,
+                        stride=config.policy_shift_stride,
+                    ).detach()
+
+                if rank == 0:
+                    print(
+                        f"[Step {step + 1}/{config.total_steps}] "
+                        f"[Group {accum_idx + 1}/{update_group_count}] Computing loss..."
+                    )
+
+                model.train()
+                if ref_model is not None:
+                    ref_model.eval()
+
+                for inputs in selected_inputs_chunks:
+                    logprob_loss(
+                        model=model,
+                        inputs=inputs,
+                        valid_samples=selected_valid_samples,
+                        gain=config.gain,
+                        accelerator=accelerator,
+                        gen_length=config.gen_length,
+                        temperature=config.temperature,
+                        mask_id=config.mask_id,
+                        grad_accumulation=update_group_count,
+                        scale_by_grad_accum=config.scale_by_grad_accum,
+                        advantage_clip=config.advantage_clip,
+                        ref_model=ref_model,
+                        kl_beta=config.kl_beta,
+                    )
+
+            accelerator.wait_for_everyone()
+            release_inputs_chunks(selected_inputs_chunks)
+            del selected_inputs_chunks
+            torch.cuda.empty_cache()
+
+        local_nonfinite_grad_count = 0
         for param in model.parameters():
             if param.grad is not None:
+                nonfinite_mask = ~torch.isfinite(param.grad)
+                local_nonfinite_grad_count += int(nonfinite_mask.sum().item())
                 torch.nan_to_num(param.grad, nan=0, posinf=0, neginf=0, out=param.grad)
-        
-        grad_norm = accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
-        if hasattr(grad_norm, "item"):
-            grad_norm = grad_norm.item()
-        
+
+        nonfinite_grad_count = distributed_sum_int(
+            local_nonfinite_grad_count,
+            accelerator=accelerator,
+            device=device,
+        )
+
+        if rank == 0 and nonfinite_grad_count > 0:
+            print(
+                f"WARNING: replaced {nonfinite_grad_count} non-finite "
+                "gradient elements with zero before clipping."
+            )
+
+        # Under FSDP, Accelerator returns the global pre-clipping norm. Do
+        # not compare it with a norm computed from rank-local parameter
+        # shards. The global post-clipping norm follows directly from the
+        # clipping coefficient.
+        grad_norm_before = accelerator.clip_grad_norm_(
+            model.parameters(),
+            config.max_grad_norm,
+        )
+
+        if hasattr(grad_norm_before, "item"):
+            grad_norm_before = grad_norm_before.item()
+
+        clip_coef = min(
+            1.0,
+            config.max_grad_norm / (grad_norm_before + 1e-6),
+        )
+        grad_norm_after = grad_norm_before * clip_coef
+        was_clipped = grad_norm_before > config.max_grad_norm
+
         optimizer.step()
-        
-        # --- Logging ---
+
+        policy_shift_stats = None
+
+        if config.log_policy_shift and monitor_generated_ids is not None and monitor_old_logps is not None:
+            accelerator.wait_for_everyone()
+
+            monitor_new_logps = compute_sampled_ar_logps(
+                model=model,
+                generated_ids=monitor_generated_ids,
+                prompt_len=monitor_prompt_len,
+                gen_length=config.gen_length,
+                temperature=config.temperature,
+                mask_id=config.mask_id,
+                stride=config.policy_shift_stride,
+            ).detach()
+
+            policy_shift_stats = compute_policy_shift_stats(
+                old_logps=monitor_old_logps,
+                new_logps=monitor_new_logps,
+                advantages=monitor_advantages,
+                accelerator=accelerator,
+            )
+
+            del monitor_generated_ids
+            del monitor_old_logps
+            del monitor_new_logps
+            del monitor_advantages
+            del monitor_rewards
+            torch.cuda.empty_cache()
+
         if (step + 1) % config.log_every == 0:
             all_rewards_tensor = torch.cat(all_rewards, dim=0)
             gathered_rewards = accelerator.gather(all_rewards_tensor)
             mean_reward = gathered_rewards.mean().item()
-            print(f"[Step {step+1}/{config.total_steps}] reward={mean_reward:.4f}, grad={grad_norm:.4f}")
-        
-        # --- Save checkpoint ---
+
+            sampled_groups = distributed_sum_int(
+                sampled_groups_local, accelerator, device
+            )
+            accepted_groups = distributed_sum_int(
+                accepted_groups_local, accelerator, device
+            )
+            rejected_groups = distributed_sum_int(
+                rejected_groups_local, accelerator, device
+            )
+            extra_groups = distributed_sum_int(
+                extra_groups_local, accelerator, device
+            )
+
+            group_stats_agg = (
+                aggregate_micro_stats(micro_group_stats, group_size)
+                if config.log_group_stats else {}
+            )
+
+            if rank == 0:
+                msg = (
+                    f"[Step {step + 1}/{config.total_steps}] "
+                    f"reward={mean_reward:.4f}, "
+                    f"grad_norm={grad_norm_before:.4f}, "
+                    f"grad_norm_clip={grad_norm_after:.4f}, "
+                    f"clip_coef={clip_coef:.4f}, "
+                    f"was_clipped={int(was_clipped)}, "
+                    f"nonfinite_grad={nonfinite_grad_count}"
+                )
+
+                if config.dynamic_sampling:
+                    used_acceptance_rate = accepted_groups / max(sampled_groups, 1)
+                    valid_candidate_rate = (
+                        accepted_groups + extra_groups
+                    ) / max(sampled_groups, 1)
+                    msg += (
+                        f", sampled_groups={sampled_groups}"
+                        f", accepted_groups={accepted_groups}"
+                        f", rejected_groups={rejected_groups}"
+                        f", extra_valid_groups={extra_groups}"
+                        f", used_accept_rate={used_acceptance_rate:.3f}"
+                        f", valid_candidate_rate={valid_candidate_rate:.3f}"
+                    )
+
+                if policy_shift_stats is not None:
+                    msg += (
+                        f", dlogp_abs={policy_shift_stats['delta_logp_abs_mean']:.4f}"
+                        f", dlogp_p90={policy_shift_stats['delta_logp_p90']:.4f}"
+                        f", dlogp_p99={policy_shift_stats['delta_logp_p99']:.4f}"
+                        f", ratio_p01={policy_shift_stats['ratio_p01']:.3f}"
+                        f", ratio_p05={policy_shift_stats['ratio_p05']:.3f}"
+                        f", ratio_p10={policy_shift_stats['ratio_p10']:.3f}"
+                        f", ratio_p90={policy_shift_stats['ratio_p90']:.3f}"
+                        f", ratio_p99={policy_shift_stats['ratio_p99']:.3f}"
+                        f", frac>1.2={policy_shift_stats['frac_ratio_gt_1p2']:.3f}"
+                        f", frac<0.8={policy_shift_stats['frac_ratio_lt_0p8']:.3f}"
+                    )
+
+                    if "pos_delta_mean" in policy_shift_stats:
+                        msg += (
+                            f", pos_dmean={policy_shift_stats['pos_delta_mean']:.4f}"
+                            f", pos_frac>1.2={policy_shift_stats['pos_frac_gt_1p2']:.3f}"
+                            f", neg_dmean={policy_shift_stats['neg_delta_mean']:.4f}"
+                            f", neg_frac<0.8={policy_shift_stats['neg_frac_lt_0p8']:.3f}"
+                        )
+
+                if group_stats_agg:
+                    msg += (
+                        f", valid_group={group_stats_agg['valid_group_ratio']:.3f}"
+                        f", nonzero_adv={group_stats_agg['nonzero_adv_ratio']:.3f}"
+                        f", pos_count_mean={group_stats_agg['pos_count_mean']:.3f}"
+                        f", adv_abs_mean={group_stats_agg['adv_abs_mean']:.3f}"
+                        f", adv_abs_p90={group_stats_agg['adv_abs_p90']:.3f}"
+                        f", adv_abs_max={group_stats_agg['adv_abs_max']:.3f}"
+                        f", pos_hist={format_pos_hist(group_stats_agg['pos_hist'])}"
+                    )
+
+                print(msg)
+
         if (step + 1) % config.save_every == 0:
             state_dict = accelerator.get_state_dict(model)
+
             if step + 1 == config.total_steps:
-                save_path = os.path.join(config.output_dir, f'training-state-{step+1:06d}')
-                accelerator.save_state(save_path)
+                training_state_path = os.path.join(
+                    config.output_dir,
+                    f"training-state-{step + 1:06d}",
+                )
+                accelerator.save_state(training_state_path)
+                accelerator.wait_for_everyone()
+
+                if rank == 0:
+                    save_training_progress(
+                        training_state_path,
+                        completed_steps=step + 1,
+                        data_batches_seen=data_batches_seen,
+                    )
+
+                accelerator.wait_for_everyone()
+
             if rank == 0:
-                save_path = os.path.join(config.output_dir, f'ckpt-{step+1:06d}')
+                save_path = os.path.join(config.output_dir, f"ckpt-{step + 1:06d}")
                 accelerator.unwrap_model(model).save_pretrained(
-                    save_path, state_dict=state_dict, safe_serialization=True
+                    save_path,
+                    state_dict=state_dict,
+                    safe_serialization=True,
                 )
                 print(f"Saved checkpoint to {save_path}")
+
         accelerator.wait_for_everyone()
-    
-    print("\nTraining complete!")
+
+    if rank == 0:
+        print("\nTraining complete!")
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="JustGRPO Training")
-    
+
     parser.add_argument("--run_dir", type=str, default="./checkpoints", help="Output directory")
     parser.add_argument("--grad_accum", type=int, default=8, help="Gradient accumulation steps")
     parser.add_argument("--resume_ckpt", type=str, default=None, help="Resume checkpoint path")
-    parser.add_argument("--block_size", type=int, default=1, help="Generate Block Size")
-    parser.add_argument("--temperature", type=float, default=1.0,  help="rollout temperature")
-    parser.add_argument("--lr", type=float, default=5e-6,  help="lr")
+
+    parser.add_argument("--block_size", type=int, default=1, help="Generate block size")
+    parser.add_argument("--temperature", type=float, default=1.0, help="Rollout temperature")
+    parser.add_argument("--lr", type=float, default=5e-6, help="Learning rate")
     parser.add_argument("--total_steps", type=int, default=50, help="Total training steps")
     parser.add_argument("--save_every", type=int, default=5, help="Save checkpoint every N steps")
-    parser.add_argument("--model_path", type=str, default="/lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct", help="Path to the model")
+
     parser.add_argument(
-            "--seed",
-            type=int,
-            default=1234,
-            help="Random seed.",
-        )
+        "--model_path",
+        type=str,
+        default="/lus/lfs1aip2/projects/public/u6er/mingyu/models/LLaDA-8B-Instruct",
+        help="Path to the model",
+    )
+
+    parser.add_argument("--gain", type=float, default=1.0, help="Global loss gain.")
+
+    grad_scale_group = parser.add_mutually_exclusive_group()
+    grad_scale_group.add_argument(
+        "--scale_by_grad_accum",
+        dest="scale_by_grad_accum",
+        action="store_true",
+        help="Average accumulated gradients by the number of update groups (default).",
+    )
+    grad_scale_group.add_argument(
+        "--no_scale_by_grad_accum",
+        dest="scale_by_grad_accum",
+        action="store_false",
+        help="Disable division by grad_accumulation in loss scale.",
+    )
+    parser.set_defaults(scale_by_grad_accum=True)
+
+    parser.add_argument(
+        "--dynamic_sampling",
+        action="store_true",
+        help=(
+            "Reject groups whose advantages are all zero and keep sampling "
+            "until every rank has a valid group for each update slot."
+        ),
+    )
+
+    parser.add_argument(
+        "--dynamic_target_valid_groups",
+        type=int,
+        default=None,
+        help=(
+            "Valid prompt groups per rank and optimizer step in dynamic mode. "
+            "Defaults to --grad_accum."
+        ),
+    )
+
+    parser.add_argument(
+        "--dynamic_max_attempts_per_group",
+        type=int,
+        default=32,
+        help="Maximum synchronized sampling attempts for each valid update group.",
+    )
+
+    parser.add_argument(
+        "--advantage_clip",
+        type=float,
+        default=None,
+        help="Clip advantages to [-value, value]. Default: no clipping.",
+    )
+
+    parser.add_argument(
+        "--kl_beta",
+        type=float,
+        default=0.0,
+        help="Coefficient for sampled KL/logprob-anchor regularization. 0 disables KL.",
+    )
+
+    parser.add_argument(
+        "--policy_shift_stride",
+        type=int,
+        default=8,
+        help="Stride for policy shift logprob monitoring. Larger is cheaper.",
+    )
+
+    parser.add_argument(
+        "--no_policy_shift_log",
+        action="store_true",
+        help="Disable policy shift logging.",
+    )
+
+    parser.add_argument(
+        "--no_group_stats_log",
+        action="store_true",
+        help="Disable reward/advantage group diagnostics.",
+    )
+
+    parser.add_argument(
+        "--max_grad_norm",
+        type=float,
+        default=1.0,
+        help="Gradient clipping norm.",
+    )
+
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=1234,
+        help="Random seed.",
+    )
+
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
 
-    # Create config from CLI args
     config = TrainConfig(
         output_dir=args.run_dir,
         grad_accumulation=args.grad_accum,
@@ -276,6 +1151,17 @@ if __name__ == "__main__":
         total_steps=args.total_steps,
         save_every=args.save_every,
         model_path=args.model_path,
+        policy_shift_stride=args.policy_shift_stride,
+        log_policy_shift=not args.no_policy_shift_log,
+        log_group_stats=not args.no_group_stats_log,
+        gain=args.gain,
+        scale_by_grad_accum=args.scale_by_grad_accum,
+        dynamic_sampling=args.dynamic_sampling,
+        dynamic_target_valid_groups=args.dynamic_target_valid_groups,
+        dynamic_max_attempts_per_group=args.dynamic_max_attempts_per_group,
+        advantage_clip=args.advantage_clip,
+        max_grad_norm=args.max_grad_norm,
+        kl_beta=args.kl_beta,
         seed=args.seed,
     )
 
