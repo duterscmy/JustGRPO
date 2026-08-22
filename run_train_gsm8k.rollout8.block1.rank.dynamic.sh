@@ -27,13 +27,13 @@ mkdir -p "$output_dir"
 #--resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/training-state-000028
 
 accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_gsm8k.rollout8.rank.py \
-  --resume_ckpt /lus/lfs1aip2/projects/public/u6os/mingyu/justgrpo/checkpoints_gsm8k_num_generation8_test_block1_temperature1.0_lr5e-6_0819_rank_dynamic/training-state-000010 \
+  --resume_ckpt /lus/lfs1aip2/projects/public/u6os/mingyu/justgrpo/checkpoints_gsm8k_num_generation8_test_block1_temperature1.0_lr5e-6_0819_rank_dynamic/training-state-000020 \
   --seed 1997 \
   --run_dir "$output_dir" \
   --block_size "$block" \
   --lr "$lr" \
   --temperature "$t" \
-  --total_steps 20 --save_every 5 \
+  --total_steps 30 --save_every 5 \
   --grad_accum 8 \
   --scale_by_grad_accum \
   --dynamic_sampling \
