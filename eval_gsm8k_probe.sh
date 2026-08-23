@@ -10,7 +10,7 @@
 source ~/.bashrc
 conda activate ttrl
 
-model_path="${1:?Usage: sbatch $0 MODEL_PATH [LENGTH] [BLOCK_SIZE]}"
+model_path="${1:?Usage: sbatqch $0 MODEL_PATH [LENGTH] [BLOCK_SIZE]}"
 length="${2:-256}"
 block="${3:-32}"
 
