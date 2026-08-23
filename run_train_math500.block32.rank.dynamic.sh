@@ -29,13 +29,14 @@ accelerate launch \
   --main_process_ip localhost \
   --config_file configs/fsdp.yaml \
   train_math500.rank.py \
+  --resume_ckpt /lus/lfs1aip2/projects/public/u6os/mingyu/justgrpo/checkpoints_math500_num_generation8_block32_t0.6_lr5e-6_level1_5_dynamic_norm/training-state-000010 \
   --seed 1997 \
   --run_dir "$output_dir" \
   --temperature "$t" \
   --lr "$lr" \
   --block_size "$block" \
   --max_level "$max_level" \
-  --total_steps 10 \
+  --total_steps 20 \
   --save_every 5 \
   --grad_accum "$grad_accum" \
   --scale_by_grad_accum \
