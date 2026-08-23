@@ -14,7 +14,7 @@ conda activate ttrl
 block=1
 t=0.6
 lr=5e-6
-output_dir=./checkpoints_gsm8k_num_generation8_test_block${block}_temperature${t}_lr${lr}_0819_rank_dynamic
+output_dir=./checkpoints_gsm8k_num_generation8_test_block${block}_temperature${t}_lr${lr}_0823_rank_dynamic
 
 # 同一个脚本跑多组配置时可用 RUN_TAG 隔离输出，例如：
 # RUN_TAG=norm / no_norm / dynamic
@@ -27,13 +27,12 @@ mkdir -p "$output_dir"
 #--resume_ckpt /lus/lfs1aip2/projects/public/u6er/mingyu/justGRPO/checkpoints/training-state-000028
 
 accelerate launch --num_processes 4 --main_process_ip localhost --config_file configs/fsdp.yaml train_gsm8k.rollout8.rank.py \
-  --resume_ckpt /lus/lfs1aip2/projects/public/u6os/mingyu/justgrpo/checkpoints_gsm8k_num_generation8_test_block1_temperature0.6_lr5e-6_0819_rank_dynamic/training-state-000030 \
   --seed 1997 \
   --run_dir "$output_dir" \
   --block_size "$block" \
   --lr "$lr" \
   --temperature "$t" \
-  --total_steps 40 --save_every 5 \
+  --total_steps 10 --save_every 5 \
   --grad_accum 8 \
   --scale_by_grad_accum \
   --dynamic_sampling \
