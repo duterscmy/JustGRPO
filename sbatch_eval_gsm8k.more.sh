@@ -14,6 +14,7 @@ conda activate ttrl
 model_path=$1
 length=${2:-256}
 block=${3:-32}
+temperature=${4:-1.0}
 mkdir -p eval_results
 
 # 检查model_path是否包含LLaDA关键字
@@ -48,7 +49,7 @@ base_name=$(basename "$clean_path")
 target_dir="eval_results/${parent_dir}"
 mkdir -p "$target_dir"
 # 4. 拼接最终的日志路径
-log_path="${target_dir}/${base_name}.gsm8k.${length}.${block}.log"
+log_path="${target_dir}/${base_name}.gsm8k.${length}.${block}.t${temperature}.log"
 
 echo "Logging to: $log_path"
 
@@ -57,6 +58,7 @@ torchrun --standalone --nproc-per-node=1 eval.py \
   --ckpt_path "$model_path" \
   --steps $length \
   --gen_length $length \
+  --temperature $temperature \
   --block_length $block &> "$log_path"
 
 

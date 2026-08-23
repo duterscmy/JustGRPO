@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name="eval_math500"
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:1
+#SBATCH --ntasks-per-node=4
+#SBATCH --gres=gpu:4
 #SBATCH --time=5:00:00
 #SBATCH -o slurm.%j.%N.out
 #SBATCH -e slurm.%j.%N.err
@@ -14,6 +14,7 @@ conda activate ttrl
 model_path=$1
 length=${2:-256}
 block=${3:-32}
+temperature=${4:-1.0}
 cp /lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct/config.json /lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct/*py /lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct/*token* $model_path
 mkdir -p eval_results
 
@@ -30,27 +31,18 @@ target_dir="eval_results/${parent_dir}"
 mkdir -p "$target_dir"
 
 # 4. 拼接最终的日志路径
-log_path="${target_dir}/${base_name}.math500.${length}.${block}.log"
+log_path="${target_dir}/${base_name}.math500.${length}.${block}.t${temperature}.log"
 
 echo "Logging to: $log_path"
 
 
-# Use model_args to adjust the sampling arguments for evaluation.
-# accelerate launch --num_processes 1 \
-#     /lus/lfs1aip2/projects/public/u6er/mingyu/dllm/dllm/pipelines/llada/eval.py \
-#     --tasks "minerva_math500" \
-#     --model "llada" \
-#     --apply_chat_template \
-#     --num_fewshot 0 \
-#     --output_path ${target_dir}/${base_name} \
-#     --model_args "pretrained=$model_path,max_new_tokens=256,steps=256,block_size=32,cfg_scale=0.0,suppress_tokens=[],begin_suppress_tokens=[126081;126348]"
 
-
-torchrun --standalone --nproc-per-node=1 eval.py \
+torchrun --standalone --nproc-per-node=4 eval.py \
   --ckpt_path "$model_path" \
   --task math500 \
   --steps $length \
   --gen_length $length \
+  --temperature $temperature \
   --block_length $block &> "$log_path"
 
 
