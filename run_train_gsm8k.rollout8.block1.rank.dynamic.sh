@@ -12,7 +12,7 @@ source ~/.bashrc # 你的环境名
 conda activate ttrl
 
 block=1
-t=0.6
+t=1.0
 lr=5e-6
 output_dir=./checkpoints_gsm8k_num_generation8_test_block${block}_temperature${t}_lr${lr}_0819_rank_dynamic
 
