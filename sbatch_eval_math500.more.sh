@@ -14,7 +14,7 @@ conda activate ttrl
 model_path=$1
 length=${2:-256}
 block=${3:-32}
-temperature=${4:-1.0}
+temperature=${4:-0.0}
 cp /lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct/config.json /lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct/*py /lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-8B-Instruct/*token* $model_path
 mkdir -p eval_results
 

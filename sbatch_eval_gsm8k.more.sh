@@ -14,7 +14,7 @@ conda activate ttrl
 model_path=$1
 length=${2:-256}
 block=${3:-32}
-temperature=${4:-1.0}
+temperature=${4:-0.0}
 mkdir -p eval_results
 
 # 检查model_path是否包含LLaDA关键字
