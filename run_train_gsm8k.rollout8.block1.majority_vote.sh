@@ -12,7 +12,7 @@ source ~/.bashrc
 conda activate ttrl
 
 block=1
-t=1.0
+t=0.6
 lr=5e-6
 
 
