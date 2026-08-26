@@ -1,7 +1,7 @@
 """GSM8K dTTRL with uniform majority voting and confidence-only logging.
 
 This is a non-invasive entry point built on top of
-``train_gsm8k.rollout8.debug_collapse.py``.  It intentionally keeps rollout
+``train_gsm8k.rollout8.rank.py``.  It intentionally keeps rollout
 confidence collection and the existing analysis log format, but confidence is
 never used to select the majority answer or construct rewards.
 
@@ -28,7 +28,7 @@ from utils.generate import generate_with_confidence
 
 
 BASE_TRAIN_SCRIPT = Path(__file__).with_name(
-    "train_gsm8k.rollout8.debug_collapse.py"
+    "train_gsm8k.rollout8.rank.py"
 )
 
 
