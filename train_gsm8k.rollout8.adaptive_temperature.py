@@ -372,7 +372,7 @@ def patch_loss_temperature(base_module: ModuleType) -> None:
 def parse_controller_args() -> tuple[argparse.Namespace, list[str]]:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--adaptive_temp_min", type=float, default=0.5)
-    parser.add_argument("--adaptive_temp_max", type=float, default=1.5)
+    parser.add_argument("--adaptive_temp_max", type=float, default=1.4)
     parser.add_argument("--adaptive_temp_confidence_gain", type=float, default=0.5)
     parser.add_argument("--adaptive_temp_valid_gain", type=float, default=0.05)
     parser.add_argument("--adaptive_temp_deadband", type=float, default=0.005)
