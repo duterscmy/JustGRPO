@@ -11,10 +11,10 @@ source ~/.bashrc
 conda activate ttrl
 
 block=32
-t=1.0
+t=0.6
 lr=5e-6
 
-output_dir="./checkpoints_gsm8k_num_generation8_test_block${block}_temperature${t}_lr${lr}_0825_majority_vote_nodynamic"
+output_dir="./checkpoints_gsm8k_num_generation8_test_block${block}_temperature${t}_lr${lr}_0828_majority_vote_nodynamic"
 
 # Never append a new run to an existing experiment directory or log.
 
@@ -27,13 +27,12 @@ accelerate launch \
   --main_process_ip localhost \
   --config_file configs/fsdp.yaml \
   train_gsm8k.rollout8.majority_vote.py \
-  --resume_ckpt  /lus/lfs1aip2/projects/public/u6os/mingyu/justgrpo/checkpoints_gsm8k_num_generation8_test_block32_temperature1.0_lr5e-6_0825_majority_vote_nodynamic/training-state-000040 \
   --seed 1997 \
   --run_dir "$output_dir" \
   --block_size "$block" \
   --lr "$lr" \
   --temperature "$t" \
-  --total_steps 60 \
+  --total_steps 20 \
   --save_every 5 \
   --grad_accum 8 \
   --scale_by_grad_accum \
