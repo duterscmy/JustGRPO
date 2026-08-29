@@ -35,11 +35,11 @@ accelerate launch \
   --save_every 5 \
   --grad_accum 8 \
   --scale_by_grad_accum \
-  --adaptive_temp_calibration_windows "${ADAPTIVE_CALIBRATION_WINDOWS:-3}" \
-  --adaptive_temp_ema_decay "${ADAPTIVE_EMA_DECAY:-0.7}" \
-  --adaptive_temp_confidence_gain "${ADAPTIVE_CONFIDENCE_GAIN:-1.5}" \
-  --adaptive_temp_deadband "${ADAPTIVE_DEADBAND:-0.0015}" \
-  --adaptive_temp_max_change "${ADAPTIVE_MAX_CHANGE:-0.03}" \
+  --adaptive_temp_calibration_windows "${ADAPTIVE_CALIBRATION_WINDOWS:-2}" \
+  --adaptive_temp_ema_decay "${ADAPTIVE_EMA_DECAY:-0.5}" \
+  --adaptive_temp_confidence_gain "${ADAPTIVE_CONFIDENCE_GAIN:-3.0}" \
+  --adaptive_temp_deadband "${ADAPTIVE_DEADBAND:-0.0005}" \
+  --adaptive_temp_max_change "${ADAPTIVE_MAX_CHANGE:-0.05}" \
   --adaptive_temp_min "${ADAPTIVE_TEMP_MIN:-0.5}" \
   --adaptive_temp_max "${ADAPTIVE_TEMP_MAX:-1.5}" \
   "$@" >> "${output_dir}.log" 2>&1
