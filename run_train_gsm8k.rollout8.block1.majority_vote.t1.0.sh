@@ -32,7 +32,7 @@ accelerate launch \
   --block_size "$block" \
   --lr "$lr" \
   --temperature "$t" \
-  --total_steps 30 \
+  --total_steps 25 \
   --save_every 5 \
   --grad_accum 8 \
   --scale_by_grad_accum \
