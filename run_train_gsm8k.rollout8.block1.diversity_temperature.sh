@@ -32,11 +32,6 @@ run_tag="${RUN_TAG:-seed${seed}}"
 output_dir="./checkpoints_gsm8k_rollout8_block${block}_temperature${initial_temperature}_lr${lr}_diversity_target${target_diversity}_${run_tag}"
 log_path="${output_dir}.log"
 
-if [[ -e "$output_dir" || -e "$log_path" ]]; then
-  echo "Refusing to overwrite an existing run: $output_dir" >&2
-  echo "Set RUN_TAG to a new value for another run." >&2
-  exit 1
-fi
 
 mkdir -p "$output_dir"
 
@@ -55,7 +50,7 @@ accelerate launch \
   --block_size "$block" \
   --lr "$lr" \
   --temperature "$initial_temperature" \
-  --total_steps "$total_steps" \
+  --total_steps 25 \
   --save_every "$save_every" \
   --grad_accum "$grad_accum" \
   --scale_by_grad_accum \
