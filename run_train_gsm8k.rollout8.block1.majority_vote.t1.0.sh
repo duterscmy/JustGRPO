@@ -27,13 +27,13 @@ accelerate launch \
   --main_process_ip localhost \
   --config_file configs/fsdp.yaml \
   train_gsm8k.rollout8.majority_vote.py \
-  --resume_ckpt  /lus/lfs1aip2/projects/public/u6os/mingyu/justgrpo/checkpoints_gsm8k_num_generation8_test_block1_temperature1.0_lr5e-6_0830_majority_vote_nodynamic/training-state-000025 \
+  --resume_ckpt  /lus/lfs1aip2/projects/public/u6os/mingyu/justgrpo/checkpoints_gsm8k_num_generation8_test_block1_temperature1.0_lr5e-6_0830_majority_vote_nodynamic/training-state-000050 \
   --seed 1997 \
   --run_dir "$output_dir" \
   --block_size "$block" \
   --lr "$lr" \
   --temperature "$t" \
-  --total_steps 50 \
+  --total_steps 75 \
   --save_every 5 \
   --grad_accum 8 \
   --scale_by_grad_accum \
