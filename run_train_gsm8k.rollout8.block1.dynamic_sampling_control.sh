@@ -39,12 +39,13 @@ accelerate launch \
   --main_process_ip localhost \
   --config_file configs/fsdp.yaml \
   train_gsm8k.rollout8.majority_vote.dynamic_sampling.py \
+  --resume_ckpt /lus/lfs1aip2/projects/public/u6os/mingyu/justgrpo/checkpoints_gsm8k_rollout8_block1_temperature0.6_lr5e-6_dynamic_sampling_seed1997/training-state-000010 \
   --seed "$seed" \
   --run_dir "$output_dir" \
   --block_size "$block" \
   --lr "$lr" \
   --temperature "$initial_temperature" \
-  --total_steps 10 \
+  --total_steps 20 \
   --save_every "$save_every" \
   --grad_accum "$grad_accum" \
   --scale_by_grad_accum \
