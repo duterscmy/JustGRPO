@@ -26,13 +26,13 @@ accelerate launch \
   --main_process_ip localhost \
   --config_file configs/fsdp.yaml \
   train_gsm8k.rollout8.adaptive_temperature_confidence_only.py \
-  --resume_ckpt /lus/lfs1aip2/projects/public/u6os/mingyu/justgrpo/checkpoints_gsm8k_num_generation8_test_block1_temperature0.6_lr5e-6_0828_adaptive_temperature_confidence_only_v2/training-state-000050 \
+  --resume_ckpt /lus/lfs1aip2/projects/public/u6os/mingyu/justgrpo/checkpoints_gsm8k_num_generation8_test_block1_temperature0.6_lr5e-6_0828_adaptive_temperature_confidence_only_v2/training-state-000075 \
   --seed 1997 \
   --run_dir "$output_dir" \
   --block_size "$block" \
   --lr "$lr" \
   --temperature "$initial_temperature" \
-  --total_steps 75 \
+  --total_steps 100 \
   --save_every 5 \
   --grad_accum 8 \
   --scale_by_grad_accum \
