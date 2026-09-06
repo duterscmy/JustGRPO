@@ -14,7 +14,7 @@ conda activate ttrl
 set -u
 
 block=1
-initial_temperature="${INITIAL_TEMPERATURE:-0.6}"
+initial_temperature="${INITIAL_TEMPERATURE:-1.0}"
 lr="${LR:-5e-6}"
 
 save_every="${SAVE_EVERY:-5}"
@@ -39,13 +39,12 @@ accelerate launch \
   --main_process_ip localhost \
   --config_file configs/fsdp.yaml \
   train_gsm8k.rollout8.majority_vote.dynamic_sampling.py \
-  --resume_ckpt /lus/lfs1aip2/projects/public/u6os/mingyu/justgrpo/checkpoints_gsm8k_rollout8_block1_temperature0.6_lr5e-6_dynamic_sampling_seed1997/training-state-000020 \
   --seed "$seed" \
   --run_dir "$output_dir" \
   --block_size "$block" \
   --lr "$lr" \
   --temperature "$initial_temperature" \
-  --total_steps 30 \
+  --total_steps 10 \
   --save_every "$save_every" \
   --grad_accum "$grad_accum" \
   --scale_by_grad_accum \
