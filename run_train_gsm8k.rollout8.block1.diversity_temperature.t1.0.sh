@@ -26,10 +26,10 @@ controller_gain="${DIVERSITY_GAIN:-0.5}"
 deadband="${DIVERSITY_DEADBAND:-0.1}"
 max_change="${DIVERSITY_MAX_CHANGE:-0.10}"
 min_temperature="${DIVERSITY_TEMP_MIN:-0.3}"
-max_temperature="${DIVERSITY_TEMP_MAX:-1.5}"
+max_temperature="${DIVERSITY_TEMP_MAX:-1.0}"
 
 run_tag="${RUN_TAG:-seed${seed}}"
-output_dir="./checkpoints_gsm8k_rollout8_block${block}_temperature${initial_temperature}_lr${lr}_diversity_target${target_diversity}_${run_tag}"
+output_dir="./checkpoints_gsm8k_rollout8_block${block}_temperature${initial_temperature}_lr${lr}_diversity_target${target_diversity}_${run_tag}_from50"
 log_path="${output_dir}.log"
 
 
@@ -45,13 +45,13 @@ accelerate launch \
   --main_process_ip localhost \
   --config_file configs/fsdp.yaml \
   train_gsm8k.rollout8.diversity_temperature.py \
-  --resume_ckpt /lus/lfs1aip2/projects/public/u6os/mingyu/justgrpo/checkpoints_gsm8k_rollout8_block1_temperature1.0_lr5e-6_diversity_target2.0_seed1997/training-state-000075 \
+  --resume_ckpt /lus/lfs1aip2/projects/public/u6os/mingyu/justgrpo/checkpoints_gsm8k_rollout8_block1_temperature1.0_lr5e-6_diversity_target2.0_seed1997/training-state-000050 \
   --seed "$seed" \
   --run_dir "$output_dir" \
   --block_size "$block" \
   --lr "$lr" \
   --temperature "$initial_temperature" \
-  --total_steps 100 \
+  --total_steps 75 \
   --save_every "$save_every" \
   --grad_accum "$grad_accum" \
   --scale_by_grad_accum \
