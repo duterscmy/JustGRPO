@@ -497,7 +497,7 @@ def train(config: TrainConfig):
     if rank == 0:
         print(f"Loading model from {config.model_path}...")
 
-    from transformers import AutoTokenizer, AutoModel
+    from transformers import AutoTokenizer, AutoModel, PreTrainedTokenizerFast
 
     model = AutoModel.from_pretrained(
         config.model_path,
@@ -526,7 +526,8 @@ def train(config: TrainConfig):
         for p in ref_model.parameters():
             p.requires_grad_(False)
 
-    tokenizer = AutoTokenizer.from_pretrained(config.model_path)
+    # tokenizer = AutoTokenizer.from_pretrained(config.model_path)
+    tokenizer = PreTrainedTokenizerFast.from_pretrained(config.model_path)
     tokenizer.pad_token_id = config.mask_id
 
     if rank == 0:
