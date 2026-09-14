@@ -46,7 +46,7 @@ accelerate launch \
   --lr "$lr" \
   --temperature "$initial_temperature" \
   --total_steps 4 \
-  --save_every 2 \
+  --save_every 1 \
   --grad_accum "$grad_accum" \
   --scale_by_grad_accum \
   --dynamic_sampling \
