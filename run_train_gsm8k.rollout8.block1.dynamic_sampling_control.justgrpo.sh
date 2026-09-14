@@ -39,6 +39,7 @@ accelerate launch \
   --main_process_ip localhost \
   --config_file configs/fsdp.yaml \
   train_gsm8k.rollout8.majority_vote.dynamic_sampling.py \
+  --model_path /lus/lfs1aip2/projects/public/u6os/mingyu/models/LLaDA-Instruct-JustGRPO-GSM8K \
   --seed "$seed" \
   --run_dir "$output_dir" \
   --block_size "$block" \
