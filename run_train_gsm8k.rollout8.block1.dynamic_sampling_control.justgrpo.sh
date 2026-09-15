@@ -14,7 +14,7 @@ conda activate ttrl
 set -u
 
 block=1
-initial_temperature="${INITIAL_TEMPERATURE:-0.6}"
+initial_temperature="${INITIAL_TEMPERATURE:-1.0}"
 lr="${LR:-5e-6}"
 
 save_every="${SAVE_EVERY:-5}"
